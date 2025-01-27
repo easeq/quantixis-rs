@@ -1,0 +1,42 @@
+// Define whitespace and skip it
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+
+expression = _{ logical_expression }
+
+// Logical Expressions
+logical_expression = { or_expression }
+
+or_expression = { and_expression ~ (OR ~ and_expression)* }
+and_expression = { not_expression ~ (AND ~ not_expression)* }
+not_expression = { NOT? ~ comparison }
+
+// Comparison Expressions
+comparison = { group | property_access | function_call | binary_operation }
+
+binary_operation = { value ~ operator ~ value }
+operator = { ">=" | ">" | "<=" | "<" | "==" | "!=" | "*" | "/" | "%" | "+" | "-"  }
+
+// Function Calls
+function_call = { identifier ~ "(" ~ function_args? ~ ")" }
+function_args = { named_arg ~ ("," ~ named_arg)* }
+named_arg = { identifier ~ ":" ~ value }
+
+// Property Access for Multi-Valued Results
+property_access = { (function_call | identifier) ~ ("." ~ identifier)+ }
+
+// Value Parsing
+value = _{ number | identifier | group }
+group = { "(" ~ logical_expression ~ ")" }
+
+// Define an identifier (letters, numbers, and underscores)
+identifier = @{ !(AND | OR | NOT) ~ (ASCII_ALPHANUMERIC | "_")+ }
+
+// Define a number (integer or decimal)
+number = @{
+    "-"? ~ ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*) ~ ("." ~ ASCII_DIGIT*)?
+}
+
+AND = _{ "AND" | "and" | "&&" }
+OR = _{ "OR" | "or" | "||" }
+NOT = { "NOT" | "not" | "!" }
+DOT = { "." | "->" }
