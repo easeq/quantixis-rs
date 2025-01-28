@@ -16,7 +16,7 @@ fn main() {
     // let expression = "(price > 100 AND volume < 5000) OR volume >= 3000";
     // let expression = "price > 100 AND volume < 5000 OR volume > 3000";
 
-    let expression = "indicator.result.signal";
+    let expression = "price > 100 AND NOT volume < 5000 OR volume >= 3000";
     evaluator.parse_expression(&expression).unwrap();
 
     match evaluator.evaluate_expression(expression, &context) {

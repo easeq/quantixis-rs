@@ -43,15 +43,15 @@ impl FunctionArgValue {
     //         Err("Expected a KeyValue type".to_string())
     //     }
     // }
-    //
-    // /// Helper to get a string or return an error
-    // pub fn as_string(&self) -> Result<&str, String> {
-    //     if let FunctionArgValue::String(value) = self {
-    //         Ok(value)
-    //     } else {
-    //         Err("Expected a String type".to_string())
-    //     }
-    // }
+
+    /// Helper to get a string or return an error
+    pub fn as_string(&self) -> Result<&str, String> {
+        if let FunctionArgValue::Identifier(value) = self {
+            Ok(value)
+        } else {
+            Err("Expected a String type".to_string())
+        }
+    }
 
     /// Helper to get a boolean or return an error
     pub fn as_boolean(&self) -> Result<bool, String> {
@@ -109,14 +109,14 @@ impl FunctionArgs {
     //         .ok_or_else(|| format!("Missing argument: {}", key))?
     //         .as_key_value()
     // }
-    //
-    // /// Retrieves an argument by key and expects it to be a string
-    // pub fn get_string(&self, key: &str) -> Result<&str, String> {
-    //     self.args
-    //         .get(key)
-    //         .ok_or_else(|| format!("Missing argument: {}", key))?
-    //         .as_string()
-    // }
+
+    /// Retrieves an argument by key and expects it to be a string
+    pub fn get_string(&self, key: &str) -> Result<&str, String> {
+        self.args
+            .get(key)
+            .ok_or_else(|| format!("Missing argument: {}", key))?
+            .as_string()
+    }
 
     /// Retrieves an argument by key and expects it to be a boolean
     pub fn get_boolean(&self, key: &str) -> Result<bool, String> {
