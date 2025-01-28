@@ -57,8 +57,8 @@ fn main() {
 
     // Register a custom function
     evaluator.register_function("add", |args| {
-        let a = args.get("a").ok_or("Missing argument 'a'")?.as_f64()?;
-        let b = args.get("b").ok_or("Missing argument 'b'")?.as_f64()?;
+        let a = args.get_number("a")?;
+        let b = args.get_number("b")?;
         Ok(FunctionResult::UnnamedF64(a + b))
     });
 
@@ -107,8 +107,8 @@ You can define and register your own functions. Each function receives named arg
 
 ```rust
 evaluator.register_function("multiply", |args| {
-    let a = args.get("a").ok_or("Missing argument 'a'")?.as_f64()?;
-    let b = args.get("b").ok_or("Missing argument 'b'")?.as_f64()?;
+    let a = args.get_number("a")?;
+    let b = args.get_number("b")?;
     Ok(FunctionResult::UnnamedF64(a * b))
 });
 ```
