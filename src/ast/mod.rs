@@ -72,9 +72,6 @@ impl ASTNode {
                         .iter()
                         .map(|(key, value)| {
                             let resolved_value = match value {
-                                // FunctionArgValue::ASTNode(node) => self
-                                //     .resolve_identifiers(context)
-                                //     .map(FunctionArgValue::ASTNode),
                                 FunctionArgValue::Number(num) => Ok(FunctionArgValue::Number(*num)),
                                 FunctionArgValue::Identifier(identifier) => {
                                     Ok(FunctionArgValue::Identifier(identifier.clone()))
@@ -105,16 +102,6 @@ impl ASTNode {
             ASTNode::Number(value) => Ok(ASTNode::Number(value.clone())),
         }
     }
-
-    // pub fn extract_function_args(
-    //     &self,
-    //     context: &HashMap<String, f64>,
-    // ) -> Result<FunctionArgs, String> {
-    //     match self {
-    //         ASTNode::FunctionCall { args, .. } => FunctionArgs::from_ast(args, context),
-    //         _ => Err("Expected a FunctionCall node".to_string()),
-    //     }
-    // }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]

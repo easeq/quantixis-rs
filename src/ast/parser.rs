@@ -20,28 +20,13 @@ impl LogicParser {
         debug!("Parse result: {:#?}", parse_result);
         Self::build_logical_expression(parse_result)
     }
-    //
-    // fn build_expression(pair: Pair<Rule>) -> Result<ASTNode, String> {
-    //     match pair.as_rule() {
-    //         Rule::logical_expression | Rule::or_expression | Rule::and_expression => {
-    //             Self::build_logical_expression(pair)
-    //         }
-    //         Rule::comparison_expression => Self::build_comparison_expression(pair),
-    //         Rule::arithmetic_expression => Self::build_arithmetic_expression(pair),
-    //         Rule::primary_expression => Self::build_primary_expression(pair),
-    //         _ => Err(format!("Unexpected rule: {:?}", pair.as_rule())),
-    //     }
-    // }
 
     fn build_logical_expression(pair: Pair<Rule>) -> Result<ASTNode, String> {
-        let mut pairs = pair.into_inner();
-        debug!("Building logical expression: {:#?}", pairs);
         Self::build_or_expression(pairs.next().unwrap())
     }
 
     fn build_or_expression(pair: Pair<Rule>) -> Result<ASTNode, String> {
         let mut pairs = pair.into_inner();
-        debug!("Building OR expression: {:#?}", pairs);
         let mut node = Self::build_and_expression(pairs.next().unwrap())?;
 
         while let Some(operator_pair) = pairs.next() {
@@ -63,17 +48,10 @@ impl LogicParser {
 
     fn build_and_expression(pair: Pair<Rule>) -> Result<ASTNode, String> {
         let mut pairs = pair.into_inner();
-        debug!("Building AND expression: {:?}", pairs);
         let p = pairs.next().unwrap();
-        debug!("AND expression: {:#?}", p);
         let mut node = Self::build_not_expression(p)?;
-        debug!("Initial AND node: {:#?}", node);
-
-        // debug!("AND next pair: {:#?}", pairs.next().unwrap());
 
         while let Some(operator_pair) = pairs.next() {
-            // debug!("Pairs: {:#?}", pairs);
-            debug!("AND operator: {:?}", operator_pair);
             let operator = match operator_pair.as_rule() {
                 Rule::AND => LogicalOperator::And,
                 _ => return Err(format!("Unexpected logical operator: {:?}", operator_pair)),
@@ -92,10 +70,7 @@ impl LogicParser {
 
     fn build_not_expression(pair: Pair<Rule>) -> Result<ASTNode, String> {
         let mut pairs = pair.into_inner();
-
-        debug!("Building not expression: {:?}", pairs);
         let operator_pair = pairs.next().unwrap();
-        debug!("NOT operator: {:?}", operator_pair);
         if operator_pair.as_rule() == Rule::NOT {
             let inner_node = Self::build_comparison_expression(pairs.next().unwrap())?;
             return Ok(ASTNode::NotOperation(Box::new(inner_node)));
@@ -105,10 +80,8 @@ impl LogicParser {
     }
 
     fn build_comparison_expression(pair: Pair<Rule>) -> Result<ASTNode, String> {
-        debug!("Building comparison expression: {:?}", pair);
         let mut pairs = pair.into_inner();
         let mut node = Self::build_arithmetic_expression(pairs.next().unwrap())?;
-        debug!("Initial comparison node: {:#?}", node);
 
         while let Some(operator_pair) = pairs.next() {
             let operator = match operator_pair.as_str() {
@@ -138,10 +111,8 @@ impl LogicParser {
     }
 
     fn build_arithmetic_expression(pair: Pair<Rule>) -> Result<ASTNode, String> {
-        debug!("Building arithmetic expression: {:?}", pair);
         let mut pairs = pair.into_inner();
         let mut node = Self::build_term(pairs.next().unwrap())?;
-        debug!("Initial arithmetic node: {:#?}", node);
         while let Some(operator_pair) = pairs.next() {
             let operator = match operator_pair.as_rule() {
                 Rule::PLUS => Operator::Add,
@@ -167,7 +138,6 @@ impl LogicParser {
     }
 
     fn build_term(pair: Pair<Rule>) -> Result<ASTNode, String> {
-        debug!("Building term: {:?}", pair);
         let mut pairs = pair.into_inner();
         let mut node = Self::build_factor(pairs.next().unwrap())?;
 
@@ -192,8 +162,6 @@ impl LogicParser {
 
     fn build_factor(pair: Pair<Rule>) -> Result<ASTNode, String> {
         let mut pairs = pair.into_inner();
-        debug!("Building factor: {:?}", pairs);
-
         if let Some(operator_pair) = pairs.peek() {
             if operator_pair.as_rule() == Rule::NOT {
                 pairs.next(); // Consume the NOT operator
@@ -207,7 +175,6 @@ impl LogicParser {
     }
 
     fn build_primary_expression(pair: Pair<Rule>) -> Result<ASTNode, String> {
-        debug!("Building primary expression: {:?}", pair);
         match pair.as_rule() {
             Rule::number => {
                 let value = pair.as_str().parse::<f64>().unwrap();
@@ -220,13 +187,10 @@ impl LogicParser {
             }
             Rule::function_call => Self::build_function_call(pair),
             Rule::property_access => Self::build_property_access(pair),
-            _ => {
-                debug!("Unexpected rule in primary expression: {:?}", pair);
-                Err(format!(
-                    "Unexpected rule in primary expression: {:?}",
-                    pair.as_rule()
-                ))
-            }
+            _ => Err(format!(
+                "Unexpected rule in primary expression: {:?}",
+                pair.as_rule()
+            )),
         }
     }
 
@@ -268,11 +232,6 @@ fn parse_value(pair: pest::iterators::Pair<Rule>) -> FunctionArgValue {
     match pair.as_rule() {
         Rule::number => FunctionArgValue::Number(pair.as_str().parse().unwrap()),
         Rule::identifier => FunctionArgValue::Identifier(pair.as_str().to_string()),
-        // Rule::group => {
-        //     let inner = pair.into_inner();
-        //     let node = LogicParser::build_ast(inner).unwrap(); // Panic for invalid group
-        //     FunctionArgValue::Expression(Box::new(node))
-        // }
         _ => panic!("Unexpected value type: {:?}", pair),
     }
 }
