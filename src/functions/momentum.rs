@@ -1,129 +1,179 @@
-use crate::ast::{FunctionArgs, FunctionResult};
-use crate::Evaluator;
+use crate::ast::{Executor, Value};
 
-pub fn register(evaluator: &mut Evaluator) {
-    evaluator.register_function("rate_of_change", rate_of_change);
-    evaluator.register_function("stochastic", stochastic);
-    evaluator.register_function("momentum", momentum);
-    evaluator.register_function("commodity_channel_index", commodity_channel_index);
-    evaluator.register_function("chande_momentum_oscillator", chande_momentum_oscillator);
-    evaluator.register_function("relative_vigor_index", relative_vigor_index);
-    evaluator.register_function("williams_percent_r", williams_percent_r);
-    evaluator.register_function("awesome_osc", awesome_oscillator);
-    evaluator.register_function("ad_oscillator", ad_oscillator);
-    evaluator.register_function("klinger_oscillator", klinger_oscillator);
-    evaluator.register_function("choppiness_index", choppiness_index);
+pub fn register(executor: &mut Executor) {
+    executor.register_function("rate_of_change", rate_of_change);
+    executor.register_function("stochastic", stochastic);
+    executor.register_function("momentum", momentum);
+    executor.register_function("commodity_channel_index", commodity_channel_index);
+    executor.register_function("chande_momentum_oscillator", chande_momentum_oscillator);
+    executor.register_function("relative_vigor_index", relative_vigor_index);
+    executor.register_function("williams_percent_r", williams_percent_r);
+    executor.register_function("awesome_osc", awesome_oscillator);
+    executor.register_function("ad_oscillator", ad_oscillator);
+    executor.register_function("klinger_oscillator", klinger_oscillator);
+    executor.register_function("choppiness_index", choppiness_index);
 }
 
-pub fn rate_of_change(args: &FunctionArgs) -> Result<FunctionResult, String> {
-    let values = args.get_array("values").unwrap_or(&[]);
-    let period = args.get_number("period").unwrap_or(14.0) as usize;
-
-    if values.len() < period {
-        return Err("Insufficient data for ROC calculation".to_string());
+fn rate_of_change(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 2 {
+        return Err("ROC requires 2 arguments: (prices: Vec<f64>, period: f64)".to_string());
     }
 
-    let roc = (values[values.len() - 1] - values[values.len() - period])
-        / values[values.len() - period]
+    let prices = match &args[0] {
+        Value::Array(p) => p,
+        _ => return Err("First argument must be an array of prices".to_string()),
+    };
+
+    let period = match args[1] {
+        Value::Number(p) if p > 0.0 => p as usize,
+        _ => {
+            return Err(
+                "Second argument must be a positive number representing the period".to_string(),
+            )
+        }
+    };
+
+    if prices.len() <= period {
+        return Err("Not enough data points to compute ROC".to_string());
+    }
+
+    let roc = ((prices.last().unwrap() - prices[prices.len() - period - 1])
+        / prices[prices.len() - period - 1])
         * 100.0;
-    Ok(FunctionResult::UnnamedF64(roc))
+    Ok(Value::Number(roc))
 }
 
-pub fn stochastic(args: &FunctionArgs) -> Result<FunctionResult, String> {
-    let values = args.get_array("values").unwrap_or(&[]); // Assumes OHLC data (high, low, close)
-    let period = args.get_number("period").unwrap_or(14.0) as usize;
-
-    if values.len() < period * 3 {
-        return Err("Insufficient data for Stochastic calculation".to_string());
+fn stochastic(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 3 {
+        return Err(
+            "Stochastic requires 3 arguments: (highs: Vec<f64>, lows: Vec<f64>, closes: Vec<f64>)"
+                .to_string(),
+        );
     }
 
-    let high_prices: Vec<f64> = values.iter().step_by(3).take(period).cloned().collect();
-    let low_prices: Vec<f64> = values
+    let highs = match &args[0] {
+        Value::Array(h) => h,
+        _ => return Err("First argument must be an array of high prices".to_string()),
+    };
+
+    let lows = match &args[1] {
+        Value::Array(l) => l,
+        _ => return Err("Second argument must be an array of low prices".to_string()),
+    };
+
+    let closes = match &args[2] {
+        Value::Array(c) => c,
+        _ => return Err("Third argument must be an array of closing prices".to_string()),
+    };
+
+    if highs.len() != lows.len() || highs.len() != closes.len() || highs.is_empty() {
+        return Err("All arrays must have the same nonzero length".to_string());
+    }
+
+    let highest_high = highs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let lowest_low = lows.iter().cloned().fold(f64::INFINITY, f64::min);
+    let latest_close = *closes.last().unwrap();
+
+    let stochastic = if highest_high != lowest_low {
+        ((latest_close - lowest_low) / (highest_high - lowest_low)) * 100.0
+    } else {
+        0.0
+    };
+
+    Ok(Value::Number(stochastic))
+}
+
+fn momentum(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 2 {
+        return Err("Momentum requires 2 arguments: (prices: Vec<f64>, period: f64)".to_string());
+    }
+
+    let prices = match &args[0] {
+        Value::Array(p) => p,
+        _ => return Err("First argument must be an array of prices".to_string()),
+    };
+
+    let period = match args[1] {
+        Value::Number(p) if p > 0.0 => p as usize,
+        _ => return Err("Second argument must be a positive number (period)".to_string()),
+    };
+
+    if prices.len() <= period {
+        return Err("Not enough data points to compute Momentum".to_string());
+    }
+
+    let momentum = prices.last().unwrap() - prices[prices.len() - period - 1];
+    Ok(Value::Number(momentum))
+}
+
+fn commodity_channel_index(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 3 {
+        return Err(
+            "CCI requires 3 arguments: (highs: Vec<f64>, lows: Vec<f64>, closes: Vec<f64>)"
+                .to_string(),
+        );
+    }
+
+    let highs = match &args[0] {
+        Value::Array(h) => h,
+        _ => return Err("First argument must be an array of high prices".to_string()),
+    };
+
+    let lows = match &args[1] {
+        Value::Array(l) => l,
+        _ => return Err("Second argument must be an array of low prices".to_string()),
+    };
+
+    let closes = match &args[2] {
+        Value::Array(c) => c,
+        _ => return Err("Third argument must be an array of closing prices".to_string()),
+    };
+
+    if highs.len() != lows.len() || highs.len() != closes.len() || highs.is_empty() {
+        return Err("All arrays must have the same nonzero length".to_string());
+    }
+
+    let typical_prices: Vec<f64> = highs
         .iter()
-        .skip(1)
-        .step_by(3)
-        .take(period)
-        .cloned()
+        .zip(lows)
+        .zip(closes)
+        .map(|((&h, &l), &c)| (h + l + c) / 3.0)
         .collect();
-    let close_prices: Vec<f64> = values
+    let mean_price = typical_prices.iter().sum::<f64>() / typical_prices.len() as f64;
+    let mean_deviation = typical_prices
         .iter()
-        .skip(2)
-        .step_by(3)
-        .take(period)
-        .cloned()
-        .collect();
+        .map(|&p| (p - mean_price).abs())
+        .sum::<f64>()
+        / typical_prices.len() as f64;
 
-    let highest_high = high_prices
-        .iter()
-        .cloned()
-        .fold(f64::NEG_INFINITY, f64::max);
-    let lowest_low = low_prices.iter().cloned().fold(f64::INFINITY, f64::min);
-    let current_close = close_prices[close_prices.len() - 1];
+    let cci = if mean_deviation != 0.0 {
+        (typical_prices.last().unwrap() - mean_price) / (0.015 * mean_deviation)
+    } else {
+        0.0
+    };
 
-    let stochastic_value = (current_close - lowest_low) / (highest_high - lowest_low) * 100.0;
-    Ok(FunctionResult::UnnamedF64(stochastic_value))
+    Ok(Value::Number(cci))
 }
 
-pub fn momentum(args: &FunctionArgs) -> Result<FunctionResult, String> {
-    let values = args.get_array("values").unwrap_or(&[]);
-    let period = args.get_number("period").unwrap_or(14.0) as usize;
-
-    if values.len() < period {
-        return Err("Insufficient data for Momentum calculation".to_string());
+fn chande_momentum_oscillator(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 1 {
+        return Err("CMO requires 1 argument: (prices: Vec<f64>)".to_string());
     }
 
-    let momentum = values[values.len() - 1] - values[values.len() - period];
-    Ok(FunctionResult::UnnamedF64(momentum))
-}
+    let prices = match &args[0] {
+        Value::Array(p) => p,
+        _ => return Err("First argument must be an array of prices".to_string()),
+    };
 
-pub fn commodity_channel_index(args: &FunctionArgs) -> Result<FunctionResult, String> {
-    let values = args.get_array("values").unwrap_or(&[]);
-    let period = args.get_number("period").unwrap_or(14.0) as usize;
-
-    if values.len() < period {
-        return Err("Insufficient data for CCI calculation".to_string());
-    }
-
-    let mut typical_price_sum = 0.0;
-    for i in 0..period {
-        let high = values[i * 3];
-        let low = values[i * 3 + 1];
-        let close = values[i * 3 + 2];
-
-        let typical_price = (high + low + close) / 3.0;
-        typical_price_sum += typical_price;
-    }
-
-    let typical_price_avg = typical_price_sum / period as f64;
-    let mut mean_deviation = 0.0;
-    for i in 0..period {
-        let high = values[i * 3];
-        let low = values[i * 3 + 1];
-        let close = values[i * 3 + 2];
-
-        let typical_price = (high + low + close) / 3.0;
-        mean_deviation += (typical_price - typical_price_avg).abs();
-    }
-
-    let mean_deviation_avg = mean_deviation / period as f64;
-    let cci = (values[values.len() - 1] - typical_price_avg) / (0.015 * mean_deviation_avg);
-
-    Ok(FunctionResult::UnnamedF64(cci))
-}
-
-pub fn chande_momentum_oscillator(args: &FunctionArgs) -> Result<FunctionResult, String> {
-    let values = args.get_array("values").unwrap_or(&[]);
-    let period = args.get_number("period").unwrap_or(14.0) as usize;
-
-    if values.len() < period {
-        return Err("Insufficient data for CMO calculation".to_string());
+    if prices.len() < 2 {
+        return Err("Not enough data points to compute CMO".to_string());
     }
 
     let mut gains = 0.0;
     let mut losses = 0.0;
 
-    for i in 1..period {
-        let change = values[i] - values[i - 1];
+    for i in 1..prices.len() {
+        let change = prices[i] - prices[i - 1];
         if change > 0.0 {
             gains += change;
         } else {
@@ -131,186 +181,345 @@ pub fn chande_momentum_oscillator(args: &FunctionArgs) -> Result<FunctionResult,
         }
     }
 
-    let cmo = (gains - losses) / (gains + losses) * 100.0;
-    Ok(FunctionResult::UnnamedF64(cmo))
+    let cmo = if (gains + losses) != 0.0 {
+        ((gains - losses) / (gains + losses)) * 100.0
+    } else {
+        0.0
+    };
+
+    Ok(Value::Number(cmo))
 }
 
-pub fn relative_vigor_index(args: &FunctionArgs) -> Result<FunctionResult, String> {
-    let values = args.get_array("values").unwrap_or(&[]); // Assumes OHLC data (open, high, low, close)
-    let period = args.get_number("period").unwrap_or(14.0) as usize;
-
-    if values.len() < period * 4 {
-        return Err("Insufficient data for RVI calculation".to_string());
+fn relative_vigor_index(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 2 {
+        return Err("RVI requires 2 arguments: (closes: Vec<f64>, opens: Vec<f64>)".to_string());
     }
 
-    let mut numerator = 0.0;
-    let mut denominator = 0.0;
+    let closes = match &args[0] {
+        Value::Array(c) => c,
+        _ => return Err("First argument must be an array of closing prices".to_string()),
+    };
 
-    for i in 1..period {
-        let open = values[i * 4];
-        let close = values[i * 4 + 2];
-        let high = values[i * 4 + 1];
-        let low = values[i * 4 + 3];
+    let opens = match &args[1] {
+        Value::Array(o) => o,
+        _ => return Err("Second argument must be an array of opening prices".to_string()),
+    };
 
-        numerator += (close - open) + (high - low);
-        denominator += (close - open) - (high - low);
+    if closes.len() != opens.len() || closes.is_empty() {
+        return Err(
+            "Closing and opening price arrays must have the same nonzero length".to_string(),
+        );
     }
 
-    let rvi = numerator / denominator;
-    Ok(FunctionResult::UnnamedF64(rvi))
+    let sum_close_open: f64 = closes.iter().zip(opens).map(|(c, o)| c - o).sum();
+    let sum_high_low: f64 = closes.iter().zip(opens).map(|(c, o)| c + o).sum();
+
+    let rvi = sum_close_open / sum_high_low;
+    Ok(Value::Number(rvi))
 }
 
-pub fn williams_percent_r(args: &FunctionArgs) -> Result<FunctionResult, String> {
-    let values = args.get_array("values").unwrap_or(&[]); // Assumes OHLC data (high, low, close)
-    let period = args.get_number("period").unwrap_or(14.0) as usize;
-
-    if values.len() < period * 3 {
-        return Err("Insufficient data for Williams %R calculation".to_string());
+fn williams_percent_r(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 3 {
+        return Err(
+            "Williams %R requires 3 arguments: (highs: Vec<f64>, lows: Vec<f64>, closes: Vec<f64>)"
+                .to_string(),
+        );
     }
 
-    let high_prices: Vec<f64> = values.iter().step_by(3).take(period).cloned().collect();
-    let low_prices: Vec<f64> = values
-        .iter()
-        .skip(1)
-        .step_by(3)
-        .take(period)
-        .cloned()
-        .collect();
-    let close_prices: Vec<f64> = values
-        .iter()
-        .skip(2)
-        .step_by(3)
-        .take(period)
-        .cloned()
-        .collect();
+    let highs = match &args[0] {
+        Value::Array(h) => h,
+        _ => return Err("First argument must be an array of high prices".to_string()),
+    };
 
-    let highest_high = high_prices
-        .iter()
-        .cloned()
-        .fold(f64::NEG_INFINITY, f64::max);
-    let lowest_low = low_prices.iter().cloned().fold(f64::INFINITY, f64::min);
-    let current_close = close_prices[close_prices.len() - 1];
+    let lows = match &args[1] {
+        Value::Array(l) => l,
+        _ => return Err("Second argument must be an array of low prices".to_string()),
+    };
 
-    let williams_r = (highest_high - current_close) / (highest_high - lowest_low) * -100.0;
-    Ok(FunctionResult::UnnamedF64(williams_r))
+    let closes = match &args[2] {
+        Value::Array(c) => c,
+        _ => return Err("Third argument must be an array of closing prices".to_string()),
+    };
+
+    if highs.len() != lows.len() || highs.len() != closes.len() || highs.is_empty() {
+        return Err("All arrays must have the same nonzero length".to_string());
+    }
+
+    let highest_high = highs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let lowest_low = lows.iter().cloned().fold(f64::INFINITY, f64::min);
+    let latest_close = *closes.last().unwrap();
+
+    let percent_r = if highest_high != lowest_low {
+        ((highest_high - latest_close) / (highest_high - lowest_low)) * -100.0
+    } else {
+        0.0
+    };
+
+    Ok(Value::Number(percent_r))
 }
 
-pub fn awesome_oscillator(args: &FunctionArgs) -> Result<FunctionResult, String> {
-    let values = args.get_array("values").unwrap_or(&[]); // Assumes OHLC data (high, low)
-    let short_period = args.get_number("short_period").unwrap_or(5.0) as usize;
-    let long_period = args.get_number("long_period").unwrap_or(34.0) as usize;
-
-    if values.len() < long_period * 2 {
-        return Err("Insufficient data for Awesome Oscillator calculation".to_string());
+fn awesome_oscillator(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 1 {
+        return Err("Awesome Oscillator requires 1 argument: (prices: Vec<f64>)".to_string());
     }
 
-    let mut short_sma = 0.0;
-    let mut long_sma = 0.0;
+    let prices = match &args[0] {
+        Value::Array(p) => p,
+        _ => return Err("First argument must be an array of prices".to_string()),
+    };
 
-    for i in 0..short_period {
-        short_sma += (values[i * 2] + values[i * 2 + 1]) / 2.0;
-    }
-    for i in 0..long_period {
-        long_sma += (values[i * 2] + values[i * 2 + 1]) / 2.0;
+    if prices.len() < 34 {
+        return Err("Not enough data points to compute Awesome Oscillator".to_string());
     }
 
-    let awesome_osc = short_sma / short_period as f64 - long_sma / long_period as f64;
-    Ok(FunctionResult::UnnamedF64(awesome_osc))
+    let sma_5 = prices.iter().rev().take(5).sum::<f64>() / 5.0;
+    let sma_34 = prices.iter().rev().take(34).sum::<f64>() / 34.0;
+
+    Ok(Value::Number(sma_5 - sma_34))
 }
 
-pub fn ad_oscillator(args: &FunctionArgs) -> Result<FunctionResult, String> {
-    let values = args.get_array("values").unwrap_or(&[]); // Assumes OHLCV data
-    let period = args.get_number("period").unwrap_or(14.0) as usize;
-
-    if values.len() < period * 4 {
-        return Err("Insufficient data for AD Oscillator calculation".to_string());
+fn ad_oscillator(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 4 {
+        return Err("AD Oscillator requires 4 arguments: (highs: Vec<f64>, lows: Vec<f64>, closes: Vec<f64>, volumes: Vec<f64>)".to_string());
     }
 
-    let mut adl = 0.0;
+    let highs = match &args[0] {
+        Value::Array(h) => h,
+        _ => return Err("First argument must be an array of high prices".to_string()),
+    };
 
-    for i in 0..period {
-        let high = values[i * 4];
-        let low = values[i * 4 + 1];
-        let close = values[i * 4 + 2];
-        let volume = values[i * 4 + 3];
+    let lows = match &args[1] {
+        Value::Array(l) => l,
+        _ => return Err("Second argument must be an array of low prices".to_string()),
+    };
 
-        let mfv = (close - low - (high - close)) / (high - low) * volume;
-        adl += mfv;
+    let closes = match &args[2] {
+        Value::Array(c) => c,
+        _ => return Err("Third argument must be an array of closing prices".to_string()),
+    };
+
+    let volumes = match &args[3] {
+        Value::Array(v) => v,
+        _ => return Err("Fourth argument must be an array of volumes".to_string()),
+    };
+
+    if highs.len() != lows.len()
+        || highs.len() != closes.len()
+        || highs.len() != volumes.len()
+        || highs.is_empty()
+    {
+        return Err("All input arrays must have the same nonzero length".to_string());
     }
 
-    Ok(FunctionResult::UnnamedF64(adl))
+    let mut ad_line = 0.0;
+    for i in 0..highs.len() {
+        let money_flow_multiplier = if highs[i] != lows[i] {
+            ((closes[i] - lows[i]) - (highs[i] - closes[i])) / (highs[i] - lows[i])
+        } else {
+            0.0
+        };
+        let money_flow_volume = money_flow_multiplier * volumes[i];
+        ad_line += money_flow_volume;
+    }
+    Ok(Value::Number(ad_line))
 }
 
-pub fn klinger_oscillator(args: &FunctionArgs) -> Result<FunctionResult, String> {
-    let values = args.get_array("values").unwrap_or(&[]); // Assumes OHLCV data
-    let fast_period = args.get_number("fast_period").unwrap_or(34.0) as usize;
-    let slow_period = args.get_number("slow_period").unwrap_or(55.0) as usize;
-
-    if values.len() < slow_period * 4 {
-        return Err("Insufficient data for Klinger Oscillator calculation".to_string());
+fn klinger_oscillator(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 4 {
+        return Err("Klinger Oscillator requires 4 arguments: (highs: Vec<f64>, lows: Vec<f64>, closes: Vec<f64>, volumes: Vec<f64>)".to_string());
     }
 
-    let mut money_flow_volumes = Vec::new();
-    // let mut fast_ema_values = Vec::new();
-    // let mut slow_ema_values = Vec::new();
+    let highs = match &args[0] {
+        Value::Array(h) => h,
+        _ => return Err("First argument must be an array of high prices".to_string()),
+    };
 
-    // Calculate the Money Flow Volume (MFV) for each bar
-    for i in 1..values.len() {
-        let high = values[i * 4];
-        let low = values[i * 4 + 1];
-        let close = values[i * 4 + 2];
-        let volume = values[i * 4 + 3];
+    let lows = match &args[1] {
+        Value::Array(l) => l,
+        _ => return Err("Second argument must be an array of low prices".to_string()),
+    };
 
-        let mfv = ((close - low) - (high - close)) / (high - low) * volume;
-        money_flow_volumes.push(mfv);
+    let closes = match &args[2] {
+        Value::Array(c) => c,
+        _ => return Err("Third argument must be an array of closing prices".to_string()),
+    };
+
+    let volumes = match &args[3] {
+        Value::Array(v) => v,
+        _ => return Err("Fourth argument must be an array of volumes".to_string()),
+    };
+
+    if highs.len() != lows.len()
+        || highs.len() != closes.len()
+        || highs.len() != volumes.len()
+        || highs.is_empty()
+    {
+        return Err("All input arrays must have the same nonzero length".to_string());
     }
 
-    // Calculate Fast and Slow EMAs of Money Flow Volume
-    let fast_ema = calculate_ema(&money_flow_volumes, fast_period)?;
-    let slow_ema = calculate_ema(&money_flow_volumes, slow_period)?;
+    let mut kvo = Vec::new();
+    for i in 1..highs.len() {
+        let volume_force = (volumes[i] * ((closes[i] - closes[i - 1]) / closes[i - 1])) as f64;
+        kvo.push(volume_force);
+    }
 
-    // The Klinger Oscillator is the difference between the Fast and Slow EMAs
-    let klinger_osc = fast_ema - slow_ema;
+    let short_ema = kvo.iter().rev().take(34).sum::<f64>() / 34.0;
+    let long_ema = kvo.iter().rev().take(55).sum::<f64>() / 55.0;
 
-    Ok(FunctionResult::UnnamedF64(klinger_osc))
+    Ok(Value::Number(short_ema - long_ema))
 }
 
-// Helper function to calculate the Exponential Moving Average (EMA)
-fn calculate_ema(values: &[f64], period: usize) -> Result<f64, String> {
-    if values.len() < period {
-        return Err("Insufficient data for EMA calculation".to_string());
+fn choppiness_index(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 3 {
+        return Err("Choppiness Index requires 3 arguments: (highs: Vec<f64>, lows: Vec<f64>, closes: Vec<f64>)".to_string());
     }
 
-    let multiplier = 2.0 / (period as f64 + 1.0);
-    let mut ema = values[0];
+    let highs = match &args[0] {
+        Value::Array(h) => h,
+        _ => return Err("First argument must be an array of high prices".to_string()),
+    };
 
-    for &value in &values[1..] {
-        ema = (value - ema) * multiplier + ema;
+    let lows = match &args[1] {
+        Value::Array(l) => l,
+        _ => return Err("Second argument must be an array of low prices".to_string()),
+    };
+
+    let closes = match &args[2] {
+        Value::Array(c) => c,
+        _ => return Err("Third argument must be an array of closing prices".to_string()),
+    };
+
+    if highs.len() != lows.len() || highs.len() != closes.len() || highs.is_empty() {
+        return Err("All input arrays must have the same nonzero length".to_string());
     }
 
-    Ok(ema)
+    let tr: f64 = highs.iter().zip(lows.iter()).map(|(h, l)| h - l).sum();
+
+    let highest_high = highs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let lowest_low = lows.iter().cloned().fold(f64::INFINITY, f64::min);
+
+    let choppiness = if tr != 0.0 {
+        100.0 * ((tr.ln()) / (highest_high - lowest_low).ln())
+    } else {
+        0.0
+    };
+
+    Ok(Value::Number(choppiness))
 }
 
-pub fn choppiness_index(args: &FunctionArgs) -> Result<FunctionResult, String> {
-    let values = args.get_array("values").unwrap_or(&[]); // Assumes OHLC data
-    let period = args.get_number("period").unwrap_or(14.0) as usize;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    if values.len() < period * 4 {
-        return Err("Insufficient data for Choppiness Index calculation".to_string());
+    #[test]
+    fn test_roc() {
+        let args = vec![
+            Value::Array(vec![10.0, 11.0, 12.0, 13.0, 14.0]),
+            Value::Number(2.0),
+        ];
+        let result = rate_of_change(&args).unwrap();
+        assert!(matches!(result, Value::Number(_)));
     }
 
-    let highest_high = values
-        .iter()
-        .take(period)
-        .max_by(|a, b| a.partial_cmp(b).unwrap())
+    #[test]
+    fn test_stochastic_oscillator() {
+        let result = stochastic(&[
+            Value::Array(vec![10.0, 12.0, 15.0, 18.0, 20.0]), // closing prices
+            Value::Array(vec![5.0, 6.0, 7.0, 8.0, 9.0]),      // lowest lows
+            Value::Array(vec![15.0, 16.0, 17.0, 18.0, 19.0]), // highest highs
+        ])
         .unwrap();
-    let lowest_low = values
-        .iter()
-        .take(period)
-        .min_by(|a, b| a.partial_cmp(b).unwrap())
-        .unwrap();
-    let _range = highest_high - lowest_low;
+        assert!(matches!(result, Value::Number(_)));
+    }
 
-    let choppiness = 100.0 * (period as f64 / (highest_high - lowest_low));
-    Ok(FunctionResult::UnnamedF64(choppiness))
+    #[test]
+    fn test_momentum() {
+        let result = momentum(&[
+            Value::Array(vec![10.0, 12.0, 15.0, 18.0, 20.0]), // closing prices
+            Value::Number(2.0),                               // period
+        ])
+        .unwrap();
+        assert!(matches!(result, Value::Number(_)));
+    }
+
+    #[test]
+    fn test_commodity_channel_index() {
+        let result = commodity_channel_index(&[
+            Value::Array(vec![10.0, 12.0, 15.0, 18.0, 20.0]), // highs
+            Value::Array(vec![5.0, 6.0, 7.0, 8.0, 9.0]),      // lows
+            Value::Array(vec![8.0, 10.0, 12.0, 14.0, 16.0]),  // closes
+            Value::Number(3.0),                               // period
+        ])
+        .unwrap();
+        assert!(matches!(result, Value::Number(_)));
+    }
+
+    #[test]
+    fn test_chande_momentum_oscillator() {
+        let result = chande_momentum_oscillator(&[
+            Value::Array(vec![10.0, 12.0, 15.0, 18.0, 20.0]), // closing prices
+            Value::Number(3.0),                               // period
+        ])
+        .unwrap();
+        assert!(matches!(result, Value::Number(_)));
+    }
+
+    #[test]
+    fn test_williams_percent_r() {
+        let result = williams_percent_r(&[
+            Value::Array(vec![10.0, 12.0, 15.0]),
+            Value::Array(vec![5.0, 6.0, 7.0]),
+            Value::Array(vec![8.0, 10.0, 12.0]),
+        ])
+        .unwrap();
+        if let Value::Number(r) = result {
+            assert!(r < 0.0);
+        } else {
+            panic!("Expected Number value");
+        }
+    }
+
+    #[test]
+    fn test_awesome_oscillator() {
+        let result = awesome_oscillator(&[Value::Array(vec![
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0,
+        ])])
+        .unwrap();
+        assert!(matches!(result, Value::Number(_)));
+    }
+
+    #[test]
+    fn test_ad_oscillator() {
+        let result = ad_oscillator(&[
+            Value::Array(vec![10.0, 12.0, 15.0]),
+            Value::Array(vec![5.0, 6.0, 7.0]),
+            Value::Array(vec![8.0, 10.0, 12.0]),
+            Value::Array(vec![1000.0, 2000.0, 1500.0]),
+        ])
+        .unwrap();
+        assert!(matches!(result, Value::Number(_)));
+    }
+
+    #[test]
+    fn test_klinger_oscillator() {
+        let result = klinger_oscillator(&[
+            Value::Array(vec![10.0, 12.0, 15.0]),
+            Value::Array(vec![5.0, 6.0, 7.0]),
+            Value::Array(vec![8.0, 10.0, 12.0]),
+            Value::Array(vec![1000.0, 2000.0, 1500.0]),
+        ])
+        .unwrap();
+        assert!(matches!(result, Value::Number(_)));
+    }
+
+    #[test]
+    fn test_choppiness_index() {
+        let result = choppiness_index(&[
+            Value::Array(vec![10.0, 12.0, 15.0]),
+            Value::Array(vec![5.0, 6.0, 7.0]),
+            Value::Array(vec![8.0, 10.0, 12.0]),
+        ])
+        .unwrap();
+        assert!(matches!(result, Value::Number(_)));
+    }
 }

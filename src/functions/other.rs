@@ -1,31 +1,49 @@
-use crate::ast::{FunctionArgs, FunctionResult};
-use crate::Evaluator;
-use std::collections::HashMap;
+use crate::ast::{Executor, Value};
 
-pub fn register(evaluator: &mut Evaluator) {
-    evaluator.register_function("pivot_points", pivot_points);
+pub fn register(executor: &mut Executor) {
+    executor.register_function("pivot_points", pivot_points);
 }
 
-pub fn pivot_points(args: &FunctionArgs) -> Result<FunctionResult, String> {
-    let values = args.get_array("values").unwrap_or(&[]);
-    if values.len() < 3 {
-        return Err("Insufficient data for Pivot Point calculation".to_string());
+fn pivot_points(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 3 {
+        return Err(
+            "Pivot Points require 3 arguments: (high: f64, low: f64, close: f64)".to_string(),
+        );
     }
 
-    let high = values[0];
-    let low = values[1];
-    let close = values[2];
+    let high = match args[0] {
+        Value::Number(h) => h,
+        _ => return Err("First argument must be a number representing the high price".to_string()),
+    };
+
+    let low = match args[1] {
+        Value::Number(l) => l,
+        _ => return Err("Second argument must be a number representing the low price".to_string()),
+    };
+
+    let close = match args[2] {
+        Value::Number(c) => c,
+        _ => {
+            return Err("Third argument must be a number representing the close price".to_string())
+        }
+    };
 
     let pivot = (high + low + close) / 3.0;
-    let support1 = (2.0 * pivot) - high;
-    let resistance1 = (2.0 * pivot) - low;
-    let support2 = pivot - (high - low);
-    let resistance2 = pivot + (high - low);
+    Ok(Value::Number(pivot))
+}
 
-    Ok(FunctionResult::NamedF64Map(HashMap::from([
-        ("support1".to_string(), support1),
-        ("resistance1".to_string(), resistance1),
-        ("support2".to_string(), support2),
-        ("resistance2".to_string(), resistance2),
-    ])))
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pivot_points() {
+        let args = vec![
+            Value::Number(110.0),
+            Value::Number(100.0),
+            Value::Number(105.0),
+        ];
+        let result = pivot_points(&args).unwrap();
+        assert!(matches!(result, Value::Number(105.0)));
+    }
 }

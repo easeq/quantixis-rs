@@ -1,6 +1,4 @@
-// use crate::ast::ASTNode;
 use std::collections::HashMap;
-// use std::hash::{Hash, Hasher};
 
 /// Enum to represent different types of argument values
 #[derive(Debug, Clone, PartialEq)]
@@ -8,11 +6,7 @@ pub enum FunctionArgValue {
     // A single number
     Number(f64),
     Identifier(String),
-    // // An array of numbers
     Array(Vec<f64>),
-    // KeyValue(HashMap<String, f64>), // Key-value pairs for complex functions
-    // String(String),                 // A string value
-    // A boolean value
     Boolean(bool),
 }
 
@@ -34,15 +28,6 @@ impl FunctionArgValue {
             Err("Expected an Array type".to_string())
         }
     }
-
-    // /// Helper to get a key-value map or return an error
-    // pub fn as_key_value(&self) -> Result<&HashMap<String, f64>, String> {
-    //     if let FunctionArgValue::KeyValue(map) = self {
-    //         Ok(map)
-    //     } else {
-    //         Err("Expected a KeyValue type".to_string())
-    //     }
-    // }
 
     /// Helper to get a string or return an error
     pub fn as_string(&self) -> Result<&str, String> {
@@ -102,14 +87,6 @@ impl FunctionArgs {
             .as_array()
     }
 
-    // /// Retrieves an argument by key and expects it to be a key-value map
-    // pub fn get_key_value(&self, key: &str) -> Result<&HashMap<String, f64>, String> {
-    //     self.args
-    //         .get(key)
-    //         .ok_or_else(|| format!("Missing argument: {}", key))?
-    //         .as_key_value()
-    // }
-
     /// Retrieves an argument by key and expects it to be a string
     pub fn get_string(&self, key: &str) -> Result<&str, String> {
         self.args
@@ -132,55 +109,6 @@ impl FunctionArgs {
     }
 }
 
-// impl FunctionArgs {
-//     /// Constructs `FunctionArgs` from a vector of `ASTNode` values.
-//     ///
-//     /// # Arguments
-//     /// - `args`: A vector of AST nodes representing the function's arguments.
-//     /// - `context`: A map containing variable values for identifiers in the AST.
-//     pub fn from_ast(
-//         args: &[ASTNode],
-//         evaluator: &crate::Evaluator,
-//         context: &HashMap<String, f64>,
-//     ) -> Result<Self, String> {
-//         let mut function_args = FunctionArgs::new();
-//
-//         for (index, arg) in args.iter().enumerate() {
-//             let value = match arg {
-//                 ASTNode::Number(n) => FunctionArgValue::Number(*n),
-//
-//                 ASTNode::Identifier(ident) => {
-//                     // Look up the identifier in the context
-//                     if let Some(val) = context.get(ident) {
-//                         FunctionArgValue::Number(*val)
-//                     } else {
-//                         return Err(format!("Identifier '{}' not found in context", ident));
-//                     }
-//                 }
-//
-//                 ASTNode::FunctionCall { name, args } => {
-//                     // Evaluate the nested function call
-//                     let function = evaluator
-//                         .functions
-//                         .get(name)
-//                         .ok_or_else(|| format!("Function '{}' not found", name))?;
-//
-//                     let nested_args = FunctionArgs::from_ast(args, evaluator, context)?;
-//                     let result = function(&nested_args)?;
-//                     FunctionArgValue::Number(result)
-//                 }
-//
-//                 _ => return Err(format!("Unsupported argument type in AST: {:?}", arg)),
-//             };
-//
-//             // Insert the value into the function arguments with a numeric key
-//             function_args.insert(&index.to_string(), value);
-//         }
-//
-//         Ok(function_args)
-//     }
-// }
-
 /// Implement conversion traits for convenience
 impl From<f64> for FunctionArgValue {
     fn from(value: f64) -> Self {
@@ -194,23 +122,17 @@ impl From<Vec<f64>> for FunctionArgValue {
     }
 }
 
-// impl From<HashMap<String, f64>> for FunctionArgValue {
-//     fn from(value: HashMap<String, f64>) -> Self {
-//         FunctionArgValue::KeyValue(value)
-//     }
-// }
-//
-// impl From<String> for FunctionArgValue {
-//     fn from(value: String) -> Self {
-//         FunctionArgValue::String(value)
-//     }
-// }
-//
-// impl From<&str> for FunctionArgValue {
-//     fn from(value: &str) -> Self {
-//         FunctionArgValue::String(value.to_string())
-//     }
-// }
+impl From<String> for FunctionArgValue {
+    fn from(value: String) -> Self {
+        FunctionArgValue::Identifier(value)
+    }
+}
+
+impl From<&str> for FunctionArgValue {
+    fn from(value: &str) -> Self {
+        FunctionArgValue::Identifier(value.to_string())
+    }
+}
 
 impl From<bool> for FunctionArgValue {
     fn from(value: bool) -> Self {

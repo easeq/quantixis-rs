@@ -1,24 +1,23 @@
-use quantixis_rs::ast::Evaluator;
+use quantixis_rs::ast::{Executor, Value};
 use std::collections::HashMap;
 
 fn main() {
     pretty_env_logger::init();
 
-    let mut evaluator = Evaluator::new(100);
+    let mut executor = Executor::new();
 
     let expression = "price > 50 AND volume < 5000";
-    let ast = evaluator
+    let ast = executor
         .parse_expression(expression)
         .expect("Failed to parse");
 
-    let context: HashMap<String, f64> =
-        [("price".to_string(), 120.0), ("volume".to_string(), 3000.0)]
-            .iter()
-            .cloned()
-            .collect();
+    let context: HashMap<String, Value> = HashMap::from([
+        ("price".to_string(), Value::Number(120.0)),
+        ("volume".to_string(), Value::Number(3000.0)),
+    ]);
 
-    match evaluator.evaluate_ast(&ast, &context) {
-        Ok(result) => println!("Result: {}", result),
+    match executor.execute_ast(&ast, &context) {
+        Ok(result) => println!("Result: {:?}", result),
         Err(err) => println!("Error: {}", err),
     }
 }

@@ -4,11 +4,11 @@ pub mod trend;
 pub mod volatility;
 pub mod volume;
 
-use crate::ast::Evaluator;
+use crate::ast::Executor;
 
-pub fn register_functions(evaluator: &mut Evaluator) {
-    momentum::register(evaluator);
-    trend::register(evaluator);
-    volatility::register(evaluator);
-    volume::register(evaluator);
+pub fn register_functions(executor: &mut Executor) {
+    momentum::register(executor);
+    trend::register(executor);
+    volatility::register(executor);
+    volume::register(executor);
 }

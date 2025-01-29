@@ -22,7 +22,8 @@ factor = { group | property_access | function_call | value }
 
 // Primary Expressions (Highest Precedence)
 group = { "(" ~ logical_expression ~ ")" }
-value = _{ number | identifier }
+value = _{ number | boolean | identifier }
+boolean = @{ TRUE | FALSE }
 
 // Function Calls
 function_call = { identifier ~ "(" ~ function_args? ~ ")" }
@@ -39,6 +40,9 @@ identifier = @{ !(AND | OR | NOT) ~ (ASCII_ALPHANUMERIC | "_")+ }
 number = @{
     "-"? ~ ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*) ~ ("." ~ ASCII_DIGIT*)?
 }
+
+TRUE = { "true" | "TRUE" }
+FALSE = { "false" | "FALSE" }
 
 // Logical Operators
 AND = { "AND" | "&&" }

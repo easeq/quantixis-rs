@@ -163,6 +163,7 @@ impl Evaluator {
                 }
             }
             ASTNode::Group(inner) => self.evaluate(inner, context),
+            _ => Err("Unsupported AST node".to_string()),
         }?;
 
         Ok(result)

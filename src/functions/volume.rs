@@ -1,58 +1,112 @@
-use crate::ast::{FunctionArgs, FunctionResult};
-use crate::Evaluator;
+use crate::ast::{Executor, Value};
 
-pub fn register(evaluator: &mut Evaluator) {
-    evaluator.register_function("on_balance_volume", on_balance_volume);
-    evaluator.register_function("chaikin_money_flow", chaikin_money_flow);
+pub fn register(executor: &mut Executor) {
+    executor.register_function("on_balance_volume", on_balance_volume);
+    executor.register_function("chaikin_money_flow", chaikin_money_flow);
 }
 
-pub fn on_balance_volume(args: &FunctionArgs) -> Result<FunctionResult, String> {
-    let values = args.get_array("values").unwrap_or(&[]); // Assumes OHLCV data
-    let period = args.get_number("period").unwrap_or(14.0) as usize;
+fn on_balance_volume(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 2 {
+        return Err("OBV requires 2 arguments: (prices: Vec<f64>, volumes: Vec<f64>)".to_string());
+    }
 
-    if values.len() < period * 4 {
-        return Err("Insufficient data for OBV calculation".to_string());
+    let prices = match &args[0] {
+        Value::Array(p) => p,
+        _ => return Err("First argument must be an array of prices".to_string()),
+    };
+
+    let volumes = match &args[1] {
+        Value::Array(v) => v,
+        _ => return Err("Second argument must be an array of volumes".to_string()),
+    };
+
+    if prices.len() != volumes.len() {
+        return Err("Prices and volumes arrays must have the same length".to_string());
     }
 
     let mut obv = 0.0;
-
-    for i in 1..values.len() {
-        let close_today = values[i * 4 + 2];
-        let close_previous = values[(i - 1) * 4 + 2];
-        let volume_today = values[i * 4 + 3];
-
-        if close_today > close_previous {
-            obv += volume_today;
-        } else if close_today < close_previous {
-            obv -= volume_today;
+    for i in 1..prices.len() {
+        if prices[i] > prices[i - 1] {
+            obv += volumes[i];
+        } else if prices[i] < prices[i - 1] {
+            obv -= volumes[i];
         }
     }
 
-    Ok(FunctionResult::UnnamedF64(obv))
+    Ok(Value::Number(obv))
 }
 
-pub fn chaikin_money_flow(args: &FunctionArgs) -> Result<FunctionResult, String> {
-    let values = args.get_array("values").unwrap_or(&[]); // Assumes OHLCV data
-    let period = args.get_number("period").unwrap_or(20.0) as usize;
-
-    if values.len() < period {
-        return Err("Insufficient data for CMF calculation".to_string());
+fn chaikin_money_flow(args: &[Value]) -> Result<Value, String> {
+    if args.len() != 4 {
+        return Err("CMF requires 4 arguments: (highs: Vec<f64>, lows: Vec<f64>, closes: Vec<f64>, volumes: Vec<f64>)".to_string());
     }
 
-    let mut money_flow_volume: f64 = 0.0;
-    let mut volume: f64 = 0.0;
+    let highs = match &args[0] {
+        Value::Array(h) => h,
+        _ => return Err("First argument must be an array of high prices".to_string()),
+    };
 
-    for i in 0..period {
-        let high = values[i * 4];
-        let low = values[i * 4 + 1];
-        let close = values[i * 4 + 2];
-        let volume_at_period = values[i * 4 + 3];
+    let lows = match &args[1] {
+        Value::Array(l) => l,
+        _ => return Err("Second argument must be an array of low prices".to_string()),
+    };
 
-        let mfv = ((close - low) - (high - close)) / (high - low) * volume_at_period;
-        money_flow_volume += mfv;
-        volume += volume_at_period;
+    let closes = match &args[2] {
+        Value::Array(c) => c,
+        _ => return Err("Third argument must be an array of close prices".to_string()),
+    };
+
+    let volumes = match &args[3] {
+        Value::Array(v) => v,
+        _ => return Err("Fourth argument must be an array of volumes".to_string()),
+    };
+
+    if highs.len() != lows.len() || lows.len() != closes.len() || closes.len() != volumes.len() {
+        return Err("All input arrays must have the same length".to_string());
     }
 
-    let cmf = money_flow_volume / volume;
-    Ok(FunctionResult::UnnamedF64(cmf))
+    let mut money_flow_volume = 0.0;
+    let mut total_volume = 0.0;
+
+    for i in 0..highs.len() {
+        let money_flow_multiplier =
+            ((closes[i] - lows[i]) - (highs[i] - closes[i])) / (highs[i] - lows[i]).max(0.00001);
+        money_flow_volume += money_flow_multiplier * volumes[i];
+        total_volume += volumes[i];
+    }
+
+    let cmf = if total_volume != 0.0 {
+        money_flow_volume / total_volume
+    } else {
+        0.0
+    };
+
+    Ok(Value::Number(cmf))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_obv() {
+        let args = vec![
+            Value::Array(vec![10.0, 11.0, 12.0, 11.0, 12.0]),
+            Value::Array(vec![1000.0, 1200.0, 1500.0, 1300.0, 1400.0]),
+        ];
+        let result = on_balance_volume(&args).unwrap();
+        assert!(matches!(result, Value::Number(_)));
+    }
+
+    #[test]
+    fn test_cmf() {
+        let args = vec![
+            Value::Array(vec![10.0, 12.0, 14.0, 16.0, 18.0]),
+            Value::Array(vec![5.0, 6.0, 7.0, 8.0, 9.0]),
+            Value::Array(vec![7.0, 9.0, 11.0, 13.0, 15.0]),
+            Value::Array(vec![1000.0, 1200.0, 1500.0, 1300.0, 1400.0]),
+        ];
+        let result = chaikin_money_flow(&args).unwrap();
+        assert!(matches!(result, Value::Number(_)));
+    }
 }

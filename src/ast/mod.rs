@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 
+mod compiler;
 mod evaluator;
 mod function_args;
 mod function_result;
 mod parser;
 
-pub use evaluator::*;
+pub use compiler::*;
+// pub use evaluator::*;
 pub use function_args::*;
 pub use function_result::*;
 pub use parser::LogicParser as Parser;
@@ -13,6 +15,7 @@ pub use parser::LogicParser as Parser;
 #[derive(Debug, Clone, PartialEq)]
 pub enum ASTNode {
     Number(f64),
+    Boolean(bool),
     Identifier(String),
     BinaryOperation {
         left: Box<ASTNode>,
@@ -73,6 +76,9 @@ impl ASTNode {
                         .map(|(key, value)| {
                             let resolved_value = match value {
                                 FunctionArgValue::Number(num) => Ok(FunctionArgValue::Number(*num)),
+                                FunctionArgValue::Boolean(value) => {
+                                    Ok(FunctionArgValue::Boolean(*value))
+                                }
                                 FunctionArgValue::Identifier(identifier) => {
                                     Ok(FunctionArgValue::Identifier(identifier.clone()))
                                 }
@@ -96,10 +102,10 @@ impl ASTNode {
             }
             ASTNode::Identifier(ident) => context.get(ident).map_or_else(
                 || Err(format!("Identifier '{}' not found in context", ident)),
-                // |value| Ok(ASTNode::Number(HashableF64(*value))),
                 |value| Ok(ASTNode::Number(*value)),
             ),
             ASTNode::Number(value) => Ok(ASTNode::Number(value.clone())),
+            ASTNode::Boolean(value) => Ok(ASTNode::Boolean(value.clone())),
         }
     }
 }

@@ -1,28 +1,25 @@
-use quantixis_rs::ast::Evaluator;
+use quantixis_rs::ast::{Executor, Value};
 use std::collections::HashMap;
 
 fn main() {
     pretty_env_logger::init();
 
-    let mut evaluator = Evaluator::new(100);
-
     let contexts = vec![
-        [("price".to_string(), 120.0), ("volume".to_string(), 3000.0)]
-            .iter()
-            .cloned()
-            .collect::<HashMap<String, f64>>(),
-        [("price".to_string(), 80.0), ("volume".to_string(), 6000.0)]
-            .iter()
-            .cloned()
-            .collect::<HashMap<String, f64>>(),
+        HashMap::from([
+            ("price".to_string(), Value::Number(120.0)),
+            ("volume".to_string(), Value::Number(3000.0)),
+        ]),
+        HashMap::from([
+            ("price".to_string(), Value::Number(80.0)),
+            ("volume".to_string(), Value::Number(6000.0)),
+        ]),
     ];
 
     let expression = "price > 100 AND volume < 5000";
 
+    let mut executor = Executor::new();
     for (i, context) in contexts.iter().enumerate() {
-        match evaluator.evaluate_expression(expression, context) {
-            Ok(result) => println!("Batch {}: Result = {}", i + 1, result),
-            Err(err) => println!("Batch {}: Error = {}", i + 1, err),
-        }
+        let result = executor.execute_expression(expression, &context).unwrap();
+        println!("Result {}: {:?}", i, result);
     }
 }

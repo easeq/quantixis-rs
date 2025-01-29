@@ -1,6 +1,6 @@
 use crate::ast::{ASTNode, FunctionArgValue, FunctionArgs, LogicalOperator, Operator};
 use log::debug;
-use pest::iterators::{Pair, Pairs};
+use pest::iterators::Pair;
 use pest::Parser;
 use pest_derive::Parser;
 use std::collections::HashMap;
@@ -22,7 +22,7 @@ impl LogicParser {
     }
 
     fn build_logical_expression(pair: Pair<Rule>) -> Result<ASTNode, String> {
-        Self::build_or_expression(pairs.next().unwrap())
+        Self::build_or_expression(pair.into_inner().next().unwrap())
     }
 
     fn build_or_expression(pair: Pair<Rule>) -> Result<ASTNode, String> {
@@ -181,6 +181,7 @@ impl LogicParser {
                 Ok(ASTNode::Number(value))
             }
             Rule::identifier => Ok(ASTNode::Identifier(pair.as_str().to_string())),
+            Rule::boolean => Ok(ASTNode::Boolean(pair.as_str().parse::<bool>().unwrap())),
             Rule::group => {
                 let inner = pair.into_inner().next().unwrap();
                 Self::build_logical_expression(inner)
@@ -232,6 +233,7 @@ fn parse_value(pair: pest::iterators::Pair<Rule>) -> FunctionArgValue {
     match pair.as_rule() {
         Rule::number => FunctionArgValue::Number(pair.as_str().parse().unwrap()),
         Rule::identifier => FunctionArgValue::Identifier(pair.as_str().to_string()),
+        Rule::boolean => FunctionArgValue::Boolean(pair.as_str().parse().unwrap()),
         _ => panic!("Unexpected value type: {:?}", pair),
     }
 }
