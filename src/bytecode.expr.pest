@@ -1,0 +1,61 @@
+// Whitespace
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+
+// Entry Point
+expression = _{ logical_expression ~ EOI }
+
+// Logical Expressions (Lowest Precedence)
+logical_expression = { or_expression }
+
+or_expression = { and_expression ~ (OR ~ and_expression)* }
+and_expression = { not_expression ~ (AND ~ not_expression)* }
+not_expression = { NOT? ~ comparison_expression }
+
+// Comparison Expressions (Next Precedence Level)
+comparison_expression = { arithmetic_expression ~ (comparison_operator ~ arithmetic_expression)* }
+comparison_operator = { ">=" | ">" | "<=" | "<" | "==" | "!=" }
+
+// Arithmetic Expressions (Higher Precedence)
+arithmetic_expression = { exponent ~ ((PLUS | MINUS) ~ exponent)* }
+exponent = { term ~ ((STAR | SLASH | MOD) ~ term)* }
+term = { factor ~ ((EXPONENT) ~ factor)* }
+factor = { group | property_access | function_call | value }
+
+// Primary Expressions (Highest Precedence)
+group = { "(" ~ logical_expression ~ ")" }
+value = { group | property_access | function_call | identifier | number | boolean }
+boolean = @{ TRUE | FALSE }
+
+// Function Calls
+function_call = { identifier ~ "(" ~ function_args? ~ ")" }
+function_args = _{ value ~ ("," ~ value)* }
+named_arg = _{ identifier ~ ":" ~ value }
+
+// Property Access for Multi-Valued Results
+property_access = { (function_call | identifier) ~ ("." ~ identifier)+ }
+
+// Define an identifier (letters, numbers, and underscores)
+identifier = @{ 
+  !(AND | OR | NOT | TRUE | FALSE) ~ (ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")*) 
+}
+
+// Define Numbers
+number = @{
+    "-"? ~ ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*) ~ ("." ~ ASCII_DIGIT*)?
+}
+
+TRUE = { "true" | "TRUE" }
+FALSE = { "false" | "FALSE" }
+
+// Logical Operators
+AND = _{ "AND" | "&&" }
+OR = _{ "OR" | "||" }
+NOT = { "NOT" | "!" }
+
+// Arithmetic Operators
+PLUS = { "+" }
+MINUS = { "-" }
+STAR = { "*" }
+SLASH = { "/" }
+MOD = { "%" }
+EXPONENT = { "^" }

@@ -1,25 +1,13 @@
 use crate::ast::{Executor, Value};
+use quantixis_macros::quantinxis_fn;
 
 pub fn register(executor: &mut Executor) {
     executor.register_function("on_balance_volume", on_balance_volume);
     executor.register_function("chaikin_money_flow", chaikin_money_flow);
 }
 
-fn on_balance_volume(args: &[Value]) -> Result<Value, String> {
-    if args.len() != 2 {
-        return Err("OBV requires 2 arguments: (prices: Vec<f64>, volumes: Vec<f64>)".to_string());
-    }
-
-    let prices = match &args[0] {
-        Value::Array(p) => p,
-        _ => return Err("First argument must be an array of prices".to_string()),
-    };
-
-    let volumes = match &args[1] {
-        Value::Array(v) => v,
-        _ => return Err("Second argument must be an array of volumes".to_string()),
-    };
-
+#[quantinxis_fn]
+fn on_balance_volume(prices: Vec<f64>, volumes: Vec<f64>) -> Result<Value, String> {
     if prices.len() != volumes.len() {
         return Err("Prices and volumes arrays must have the same length".to_string());
     }
@@ -36,31 +24,13 @@ fn on_balance_volume(args: &[Value]) -> Result<Value, String> {
     Ok(Value::Number(obv))
 }
 
-fn chaikin_money_flow(args: &[Value]) -> Result<Value, String> {
-    if args.len() != 4 {
-        return Err("CMF requires 4 arguments: (highs: Vec<f64>, lows: Vec<f64>, closes: Vec<f64>, volumes: Vec<f64>)".to_string());
-    }
-
-    let highs = match &args[0] {
-        Value::Array(h) => h,
-        _ => return Err("First argument must be an array of high prices".to_string()),
-    };
-
-    let lows = match &args[1] {
-        Value::Array(l) => l,
-        _ => return Err("Second argument must be an array of low prices".to_string()),
-    };
-
-    let closes = match &args[2] {
-        Value::Array(c) => c,
-        _ => return Err("Third argument must be an array of close prices".to_string()),
-    };
-
-    let volumes = match &args[3] {
-        Value::Array(v) => v,
-        _ => return Err("Fourth argument must be an array of volumes".to_string()),
-    };
-
+#[quantinxis_fn]
+fn chaikin_money_flow(
+    highs: Vec<f64>,
+    lows: Vec<f64>,
+    closes: Vec<f64>,
+    volumes: Vec<f64>,
+) -> Result<Value, String> {
     if highs.len() != lows.len() || lows.len() != closes.len() || closes.len() != volumes.len() {
         return Err("All input arrays must have the same length".to_string());
     }

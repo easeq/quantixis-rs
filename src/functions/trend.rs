@@ -1,4 +1,6 @@
-use crate::ast::{Executor, Value};
+use crate::ast::Executor;
+use crate::ast::Value;
+use quantixis_macros::quantinxis_fn;
 
 pub fn register(executor: &mut Executor) {
     executor.register_function("simple_moving_average", simple_moving_average);
@@ -12,24 +14,12 @@ pub fn register(executor: &mut Executor) {
     executor.register_function("parabolic_sar", parabolic_sar);
 }
 
-fn simple_moving_average(args: &[Value]) -> Result<Value, String> {
-    if args.len() != 2 {
-        return Err("SMA requires 2 arguments: (prices: Vec<f64>, period: f64)".to_string());
+#[quantinxis_fn]
+fn simple_moving_average(prices: Vec<f64>, period: f64) -> Result<Value, String> {
+    let period = period as usize;
+    if period == 0 {
+        return Err("Period must be a positive number".to_string());
     }
-
-    let prices = match &args[0] {
-        Value::Array(p) => p,
-        _ => return Err("First argument must be an array of prices".to_string()),
-    };
-
-    let period = match args[1] {
-        Value::Number(p) if p > 0.0 => p as usize,
-        _ => {
-            return Err(
-                "Second argument must be a positive number representing the period".to_string(),
-            )
-        }
-    };
 
     if prices.len() < period {
         return Err("Not enough data points to compute SMA".to_string());
@@ -39,24 +29,12 @@ fn simple_moving_average(args: &[Value]) -> Result<Value, String> {
     Ok(Value::Number(sum / period as f64))
 }
 
-fn exponential_moving_average(args: &[Value]) -> Result<Value, String> {
-    if args.len() != 2 {
-        return Err("EMA requires 2 arguments: (prices: Vec<f64>, period: f64)".to_string());
+#[quantinxis_fn]
+fn exponential_moving_average(prices: Vec<f64>, period: f64) -> Result<Value, String> {
+    let period = period as usize;
+    if period == 0 {
+        return Err("Period must be a positive number".to_string());
     }
-
-    let prices = match &args[0] {
-        Value::Array(p) => p,
-        _ => return Err("First argument must be an array of prices".to_string()),
-    };
-
-    let period = match args[1] {
-        Value::Number(p) if p > 0.0 => p as usize,
-        _ => {
-            return Err(
-                "Second argument must be a positive number representing the period".to_string(),
-            )
-        }
-    };
 
     if prices.len() < period {
         return Err("Not enough data points to compute EMA".to_string());
@@ -72,24 +50,12 @@ fn exponential_moving_average(args: &[Value]) -> Result<Value, String> {
     Ok(Value::Number(ema))
 }
 
-fn relative_strength_index(args: &[Value]) -> Result<Value, String> {
-    if args.len() != 2 {
-        return Err("RSI requires 2 arguments: (prices: Vec<f64>, period: f64)".to_string());
+#[quantinxis_fn]
+fn relative_strength_index(prices: Vec<f64>, period: f64) -> Result<Value, String> {
+    let period = period as usize;
+    if period == 0 {
+        return Err("Period must be a positive number".to_string());
     }
-
-    let prices = match &args[0] {
-        Value::Array(p) => p,
-        _ => return Err("First argument must be an array of prices".to_string()),
-    };
-
-    let period = match args[1] {
-        Value::Number(p) if p > 0.0 => p as usize,
-        _ => {
-            return Err(
-                "Second argument must be a positive number representing the period".to_string(),
-            )
-        }
-    };
 
     if prices.len() < period + 1 {
         return Err("Not enough data points to compute RSI".to_string());
@@ -119,51 +85,20 @@ fn relative_strength_index(args: &[Value]) -> Result<Value, String> {
     Ok(Value::Number(rs))
 }
 
-fn moving_average_convergence_divergence(args: &[Value]) -> Result<Value, String> {
-    if args.len() != 3 {
-        return Err(
-            "MACD requires 3 arguments: (prices: Vec<f64>, short_period: f64, long_period: f64)"
-                .to_string(),
-        );
-    }
-
-    let prices = match &args[0] {
-        Value::Array(p) => p,
-        _ => return Err("First argument must be an array of prices".to_string()),
-    };
-
-    let short_period = match args[1] {
-        Value::Number(p) if p > 0.0 => p as usize,
-        _ => {
-            return Err(
-                "Second argument must be a positive number representing the short EMA period"
-                    .to_string(),
-            )
-        }
-    };
-
-    let long_period = match args[2] {
-        Value::Number(p) if p > short_period as f64 => p as usize,
-        _ => {
-            return Err(
-                "Third argument must be a positive number greater than the short EMA period"
-                    .to_string(),
-            )
-        }
-    };
-
-    if prices.len() < long_period {
+#[quantinxis_fn]
+fn moving_average_convergence_divergence(
+    prices: Vec<f64>,
+    short_period: f64,
+    long_period: f64,
+) -> Result<Value, String> {
+    if prices.len() < long_period as usize {
         return Err("Not enough data points to compute MACD".to_string());
     }
 
-    let ema_short = exponential_moving_average(&[
-        Value::Array(prices.clone()),
-        Value::Number(short_period as f64),
-    ])?;
-    let ema_long = exponential_moving_average(&[
-        Value::Array(prices.clone()),
-        Value::Number(long_period as f64),
-    ])?;
+    let ema_short =
+        exponential_moving_average(&[Value::Array(prices.clone()), Value::Number(short_period)])?;
+    let ema_long =
+        exponential_moving_average(&[Value::Array(prices.clone()), Value::Number(long_period)])?;
 
     match (ema_short, ema_long) {
         (Value::Number(short), Value::Number(long)) => Ok(Value::Number(short - long)),
@@ -171,33 +106,9 @@ fn moving_average_convergence_divergence(args: &[Value]) -> Result<Value, String
     }
 }
 
-fn ichimoku_tenkan_kijun(args: &[Value]) -> Result<Value, String> {
-    if args.len() != 3 {
-        return Err(
-            "Ichimoku requires 3 arguments: (highs: Vec<f64>, lows: Vec<f64>, period: f64)"
-                .to_string(),
-        );
-    }
-
-    let highs = match &args[0] {
-        Value::Array(h) => h,
-        _ => return Err("First argument must be an array of high prices".to_string()),
-    };
-
-    let lows = match &args[1] {
-        Value::Array(l) => l,
-        _ => return Err("Second argument must be an array of low prices".to_string()),
-    };
-
-    let period = match args[2] {
-        Value::Number(p) if p > 0.0 => p as usize,
-        _ => {
-            return Err(
-                "Third argument must be a positive number representing the period".to_string(),
-            )
-        }
-    };
-
+#[quantinxis_fn]
+fn ichimoku_tenkan_kijun(highs: Vec<f64>, lows: Vec<f64>, period: f64) -> Result<Value, String> {
+    let period = period as usize;
     if highs.len() < period || lows.len() < period {
         return Err("Not enough data points to compute Ichimoku values".to_string());
     }
@@ -217,31 +128,12 @@ fn ichimoku_tenkan_kijun(args: &[Value]) -> Result<Value, String> {
     Ok(Value::Number(tenkan_sen))
 }
 
-fn parabolic_sar(args: &[Value]) -> Result<Value, String> {
-    if args.len() != 3 {
-        return Err("Parabolic SAR requires 3 arguments: (highs: Vec<f64>, lows: Vec<f64>, acceleration_factor: f64)".to_string());
-    }
-
-    let highs = match &args[0] {
-        Value::Array(h) => h,
-        _ => return Err("First argument must be an array of high prices".to_string()),
-    };
-
-    let lows = match &args[1] {
-        Value::Array(l) => l,
-        _ => return Err("Second argument must be an array of low prices".to_string()),
-    };
-
-    let acceleration_factor = match args[2] {
-        Value::Number(a) if a > 0.0 => a,
-        _ => {
-            return Err(
-                "Third argument must be a positive number representing the acceleration factor"
-                    .to_string(),
-            )
-        }
-    };
-
+#[quantinxis_fn]
+fn parabolic_sar(
+    highs: Vec<f64>,
+    lows: Vec<f64>,
+    acceleration_factor: f64,
+) -> Result<Value, String> {
     if highs.len() < 2 || lows.len() < 2 {
         return Err("Not enough data points to compute Parabolic SAR".to_string());
     }

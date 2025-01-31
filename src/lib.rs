@@ -1,4 +1,5 @@
 pub mod ast;
+pub mod bytecode;
 pub mod functions;
 
 // use ast::{Evaluator, Parser};

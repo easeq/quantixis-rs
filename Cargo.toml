@@ -13,7 +13,12 @@ rayon = "1.10.0"
 lru = "0.12.5"
 thiserror = "2.0.11"
 criterion = "0.5.1"
-evalexpr = "12.0.2"
+cranelift = "0.116.1"
+cranelift-module = "0.116.1"
+cranelift-jit = "0.116.1"
+cranelift-native = "0.116.1"
+target-lexicon = "0.13.1"
+quantixis_macros = { path = "./quantixis_macros" }
 
 [[bench]]
 name = "evaluation"
@@ -22,3 +27,7 @@ harness = false
 [dev-dependencies]
 meval = "0.2.0"
 pyo3 = { version = "0.23.4", features = ["auto-initialize"] }
+evalexpr = "12.0.2"
+
+[workspace]
+members = ["quantixis_macros"]
