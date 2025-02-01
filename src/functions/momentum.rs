@@ -1,5 +1,4 @@
 use crate::ast::{Executor, Value};
-use crate::extract_args;
 use quantixis_macros::quantinxis_fn;
 
 pub fn register(executor: &mut Executor) {
@@ -7,7 +6,6 @@ pub fn register(executor: &mut Executor) {
     executor.register_function("stochastic", stochastic);
     executor.register_function("momentum", momentum);
     executor.register_function("commodity_channel_index", commodity_channel_index);
-    // executor.register_function("chande_momentum_oscillator", chande_momentum_oscillator);
     executor.register_function("relative_vigor_index", relative_vigor_index);
     executor.register_function("williams_percent_r", williams_percent_r);
     executor.register_function("awesome_osc", awesome_oscillator);

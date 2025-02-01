@@ -1,13 +1,9 @@
 use std::collections::HashMap;
 
 mod compiler;
-mod decoder;
-mod encoder;
 mod executor;
-// mod jit_compiler;
 
 pub use compiler::BytecodeCompiler;
-// use decoder::BytecodeDecoder;
 pub use executor::{BytecodeExecutor, Value};
 
 #[derive(Debug, Clone, PartialEq)]

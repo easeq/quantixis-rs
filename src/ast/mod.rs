@@ -1,15 +1,11 @@
 use std::collections::HashMap;
 
 mod compiler;
-mod evaluator;
 mod function_args;
-mod function_result;
 mod parser;
 
 pub use compiler::*;
-// pub use evaluator::*;
 pub use function_args::*;
-pub use function_result::*;
 pub use parser::LogicParser as Parser;
 
 #[derive(Debug, Clone, PartialEq)]

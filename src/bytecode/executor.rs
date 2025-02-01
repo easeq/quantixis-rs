@@ -1,4 +1,4 @@
-use crate::bytecode::{BytecodeCompiler, OpCode};
+use crate::bytecode::{Bytecode, BytecodeCompiler};
 use log::debug;
 use std::collections::HashMap;
 
@@ -12,11 +12,12 @@ pub enum Value {
     Map(HashMap<String, Value>),
 }
 
+type Func = fn(&[Value]) -> Result<Value, String>;
+
 pub struct BytecodeExecutor {
     stack: Vec<Value>,
     variables: HashMap<String, Value>, // Named variables for easier access
     functions: HashMap<String, fn(&[Value]) -> Result<Value, String>>, // Function registry
-    properties: HashMap<String, Value>, // Properties storage
 }
 
 impl BytecodeExecutor {
@@ -25,7 +26,6 @@ impl BytecodeExecutor {
             stack: Vec::new(),
             variables: HashMap::new(),
             functions: HashMap::new(),
-            properties: HashMap::new(),
         }
     }
 
@@ -34,191 +34,116 @@ impl BytecodeExecutor {
         self.functions.insert(name.to_string(), func);
     }
 
-    /// Bind a variable to the execution context
+    // Bind a variable to the execution context
     pub fn bind_variable(&mut self, name: &str, value: Value) {
         self.variables.insert(name.to_string(), value);
     }
 
-    pub fn execute(&mut self, bytecode: &[u8]) -> Result<Option<Value>, String> {
-        let mut pc = 0;
+    pub fn execute(&mut self, bytecode: &[Bytecode]) -> Result<Option<Value>, String> {
+        let mut pc = 0; // Program counter
 
         while pc < bytecode.len() {
-            let opcode = OpCode::from_u8(bytecode[pc])
-                .ok_or(format!("Invalid opcode: {:#X}", bytecode[pc]))?;
+            let instruction = &bytecode[pc];
             pc += 1;
 
-            match opcode {
-                OpCode::PushInt => {
-                    let value = self.read_i64(&bytecode[pc..])?;
-                    self.stack.push(Value::Int(value));
-                    pc += 8;
-                }
-                OpCode::PushFloat => {
-                    let value = self.read_f64(&bytecode[pc..])?;
-                    self.stack.push(Value::Number(value));
-                    pc += 8;
-                }
-                OpCode::PushBool => {
-                    let value = bytecode[pc] != 0;
-                    self.stack.push(Value::Boolean(value));
-                    pc += 1;
-                }
-                OpCode::PushString => {
-                    let str_end = bytecode[pc..]
-                        .iter()
-                        .position(|&b| b == 0)
-                        .ok_or("Invalid string encoding")?;
-                    let string = String::from_utf8(bytecode[pc..pc + str_end].to_vec())
-                        .map_err(|_| "Invalid UTF-8 string")?;
-                    self.stack.push(Value::Str(string));
-                    pc += str_end + 1;
-                }
-                OpCode::PushArrayF64 => {
-                    let len = bytecode[pc] as usize;
-                    pc += 1;
-                    let mut array = Vec::new();
-                    for _ in 0..len {
-                        array.push(self.read_f64(&bytecode[pc..])?);
-                        pc += 8;
+            match instruction {
+                // Stack Operations
+                Bytecode::PushInt(value) => self.stack.push(Value::Int(*value)),
+                Bytecode::PushFloat(value) => self.stack.push(Value::Number(*value)),
+                Bytecode::PushBool(value) => self.stack.push(Value::Boolean(*value)),
+                Bytecode::PushString(value) => self.stack.push(Value::Str(value.clone())),
+                Bytecode::PushArrayF64(values) => self.stack.push(Value::ArrayF64(values.clone())),
+                Bytecode::PushMap(map) => self.stack.push(Value::Map(map.clone())),
+
+                // Arithmetic Operations
+                Bytecode::Add => self.binary_op(|a, b| a + b)?,
+                Bytecode::Sub => self.binary_op(|a, b| a - b)?,
+                Bytecode::Mul => self.binary_op(|a, b| a * b)?,
+                Bytecode::Div => self.binary_op(|a, b| a / b)?,
+                Bytecode::Mod => self.binary_op(|a, b| a % b)?,
+                Bytecode::Pow => self.binary_op(|a, b| a.powf(b))?,
+
+                // Comparison Operations
+                Bytecode::Eq => self.binary_op_bool(|a, b| a == b)?,
+                Bytecode::Ne => self.binary_op_bool(|a, b| a != b)?,
+                Bytecode::Gt => self.binary_op_bool(|a, b| a > b)?,
+                Bytecode::Lt => self.binary_op_bool(|a, b| a < b)?,
+                Bytecode::Ge => self.binary_op_bool(|a, b| a >= b)?,
+                Bytecode::Le => self.binary_op_bool(|a, b| a <= b)?,
+
+                // Logical Operations
+                Bytecode::And => self.binary_op_bool(|a, b| a && b)?,
+                Bytecode::Or => self.binary_op_bool(|a, b| a || b)?,
+                Bytecode::Not => self.unary_op_bool(|a| !a)?,
+
+                // Function Calls
+                Bytecode::Call(fn_name, arg_count) => {
+                    let mut args = Vec::new();
+                    for _ in 0..*arg_count {
+                        args.push(self.stack.pop().ok_or("Stack underflow on function call")?);
                     }
-                    self.stack.push(Value::ArrayF64(array));
-                }
-                OpCode::PushMap => {
-                    let mut map = HashMap::new();
-                    let len = bytecode[pc] as usize;
-                    pc += 1;
-                    for _ in 0..len {
-                        let key_end = bytecode[pc..]
-                            .iter()
-                            .position(|&b| b == 0)
-                            .ok_or("Invalid map key encoding")?;
-                        let key = String::from_utf8(bytecode[pc..pc + key_end].to_vec())
-                            .map_err(|_| "Invalid UTF-8 key")?;
-                        pc += key_end + 1;
+                    args.reverse(); // Reverse the order of arguments
 
-                        let value = self.stack.pop().ok_or("Stack underflow for map value")?;
-                        map.insert(key, value);
-                    }
-                    self.stack.push(Value::Map(map));
-                }
-                OpCode::Add => self.binary_op(|a, b| a + b)?,
-                OpCode::Sub => self.binary_op(|a, b| a - b)?,
-                OpCode::Mul => self.binary_op(|a, b| a * b)?,
-                OpCode::Div => self.binary_op(|a, b| a / b)?,
-                OpCode::Mod => self.binary_op(|a, b| a % b)?,
-                OpCode::Pow => self.binary_op(|a, b| a.powf(b))?,
-                OpCode::Eq => self.binary_op_bool(|a, b| a == b)?,
-                OpCode::Ne => self.binary_op_bool(|a, b| a != b)?,
-                OpCode::Gt => self.binary_op_bool(|a, b| a > b)?,
-                OpCode::Lt => self.binary_op_bool(|a, b| a < b)?,
-                OpCode::Ge => self.binary_op_bool(|a, b| a >= b)?,
-                OpCode::Le => self.binary_op_bool(|a, b| a <= b)?,
-                OpCode::And => self.binary_op_bool(|a, b| a && b)?,
-                OpCode::Or => self.binary_op_bool(|a, b| a || b)?,
-                OpCode::Not => self.unary_op_bool(|a| !a)?,
-
-                OpCode::Call => {
-                    let arg_count = bytecode[pc] as usize;
-                    pc += 1;
-                    let func_end = bytecode[pc..]
-                        .iter()
-                        .position(|&b| b == 0)
-                        .ok_or("Invalid function name encoding")?;
-                    let func_name = String::from_utf8(bytecode[pc..pc + func_end].to_vec())
-                        .map_err(|_| "Invalid function name")?;
-                    pc += func_end + 1;
-
-                    if let Some(func) = self.functions.get(&func_name) {
-                        let mut args = Vec::new();
-                        for _ in 0..arg_count {
-                            args.push(self.stack.pop().ok_or("Stack underflow on function call")?);
-                        }
-                        args.reverse();
+                    // Assuming you have a mechanism for looking up functions
+                    if let Some(func) = self.functions.get(fn_name) {
                         let result = func(&args);
                         self.stack.push(result?);
                     } else {
-                        return Err(format!("Undefined function: {}", func_name));
+                        return Err(format!("Call to undefined function: '{fn_name}'"));
                     }
+
+                    // let func: Func = unsafe { std::mem::transmute(fn_addr) };
+                    // let result = func(&args);
+                    // self.stack.push(result?);
                 }
 
-                OpCode::LoadVariable => {
-                    let str_end = bytecode[pc..]
-                        .iter()
-                        .position(|&b| b == 0)
-                        .ok_or("Invalid variable name encoding")?;
-                    let var_name = String::from_utf8(bytecode[pc..pc + str_end].to_vec())
-                        .map_err(|_| "Invalid variable name")?;
-                    debug!("LoadVariable: {var_name}");
-                    pc += str_end + 1;
-                    if let Some(value) = self.variables.get(&var_name) {
+                // Variable Handling
+                Bytecode::LoadVariable(var_name) => {
+                    if let Some(value) = self.variables.get(var_name) {
                         self.stack.push(value.clone());
                     } else {
                         return Err(format!("Undefined variable: {}", var_name));
                     }
                 }
-
-                OpCode::StoreVariable => {
-                    let str_end = bytecode[pc..]
-                        .iter()
-                        .position(|&b| b == 0)
-                        .ok_or("Invalid variable name encoding")?;
-                    let var_name = String::from_utf8(bytecode[pc..pc + str_end].to_vec())
-                        .map_err(|_| "Invalid variable name")?;
-                    pc += str_end + 1;
-
+                Bytecode::StoreVariable(var_name) => {
                     let value = self
                         .stack
                         .pop()
                         .ok_or("Stack underflow when storing variable")?;
-                    self.variables.insert(var_name, value);
+                    self.variables.insert(var_name.clone(), value);
                 }
 
-                OpCode::GetProperty => {
-                    let str_end = bytecode[pc..]
-                        .iter()
-                        .position(|&b| b == 0)
-                        .ok_or("Invalid property name encoding")?;
-                    let prop_name = String::from_utf8(bytecode[pc..pc + str_end].to_vec())
-                        .map_err(|_| "Invalid property name")?;
-                    pc += str_end + 1;
-
-                    debug!("GetProperty: {prop_name}");
-                    match self.stack.pop() {
-                        Some(Value::Map(object)) => {
-                            if let Some(value) = object.get(&prop_name) {
-                                self.stack.push(value.clone());
-                            } else {
-                                debug!("Object: {:#?}", object);
-                                return Err(format!("Undefined property {} in object", prop_name));
-                            }
+                // Property Access
+                Bytecode::GetProperty(property_name) => match self.stack.pop() {
+                    Some(Value::Map(map)) => {
+                        if let Some(value) = map.get(property_name) {
+                            self.stack.push(value.clone());
+                        } else {
+                            return Err(format!("Property '{}' not found in map", property_name));
                         }
-                        _ => return Err(format!("Cannot access property on a non-object")),
-                    };
-                }
+                    }
+                    _ => return Err("Cannot access property on a non-map value".to_string()),
+                },
 
-                OpCode::Jump => {
-                    let addr = self.read_u16(&bytecode[pc..])?;
-                    pc = addr;
+                // Control Flow
+                Bytecode::Jump(target) => {
+                    pc = *target;
+                    continue;
                 }
-                OpCode::JumpIfTrue => {
-                    let addr = self.read_u16(&bytecode[pc..])?;
+                Bytecode::JumpIfTrue(target) => {
                     if self.pop_bool()? {
-                        pc = addr;
-                    } else {
-                        pc += 2;
+                        pc = *target;
+                        continue;
                     }
                 }
-                OpCode::JumpIfFalse => {
-                    let addr = self.read_u16(&bytecode[pc..])?;
+                Bytecode::JumpIfFalse(target) => {
                     if !self.pop_bool()? {
-                        pc = addr;
-                    } else {
-                        pc += 2;
+                        pc = *target;
+                        continue;
                     }
                 }
-
-                OpCode::Return => return Ok(self.stack.pop()),
-                OpCode::NoOp => {}
+                Bytecode::Return => return Ok(self.stack.pop()),
+                Bytecode::NoOp => {}
             }
         }
 
@@ -270,35 +195,13 @@ impl BytecodeExecutor {
             _ => Err("Expected a boolean on stack".to_string()),
         }
     }
-
-    fn read_i64(&self, bytes: &[u8]) -> Result<i64, String> {
-        if bytes.len() < 8 {
-            return Err("Not enough bytes for i64".to_string());
-        }
-        Ok(i64::from_le_bytes(bytes[..8].try_into().unwrap()))
-    }
-
-    fn read_f64(&self, bytes: &[u8]) -> Result<f64, String> {
-        if bytes.len() < 8 {
-            return Err("Unexpected end of bytecode".to_string());
-        }
-        Ok(f64::from_le_bytes(bytes[..8].try_into().unwrap()))
-    }
-
-    fn read_u16(&self, bytes: &[u8]) -> Result<usize, String> {
-        if bytes.len() < 2 {
-            return Err("Unexpected end of bytecode".to_string());
-        }
-        Ok(u16::from_le_bytes(bytes[..2].try_into().unwrap()) as usize)
-    }
 }
 
 mod tests {
     use super::*;
-    use crate::extract_args_bytecode;
     use quantixis_macros::quantinxis_fn;
-    // use crate::bytecode::{BytecodeCompiler, Value};
 
+    #[allow(unused)]
     fn compile_and_execute(expression: &str) -> Value {
         let bytecode = compile(expression).expect("Compilation failed");
         let mut executor = BytecodeExecutor::new();
@@ -308,13 +211,14 @@ mod tests {
             .expect("Execute option failed")
     }
 
+    #[allow(unused)]
     fn compile_and_execute_result(expression: &str) -> Result<Value, String> {
         let bytecode = compile(expression)?;
         let mut executor = BytecodeExecutor::new();
         executor.execute(&bytecode)?.ok_or("None found".to_string())
     }
 
-    fn compile(expression: &str) -> Result<Vec<u8>, String> {
+    fn compile(expression: &str) -> Result<Vec<Bytecode>, String> {
         let mut compiler = BytecodeCompiler::new();
         compiler.compile(expression)
     }
@@ -565,7 +469,7 @@ mod tests {
         let result = compile_and_execute_result("undefined_func(4)");
         assert_eq!(
             result,
-            Err("Undefined function: undefined_func".to_string())
+            Err("Call to undefined function: 'undefined_func'".to_string())
         );
     }
 
@@ -714,7 +618,6 @@ mod tests {
     #[test]
     fn test_always_false_logical_expression() {
         let expr = "false OR false OR false";
-        let bytecode = compile(expr).expect("failed to compile expression");
         assert_eq!(compile_and_execute(expr), Value::Boolean(false));
     }
 
