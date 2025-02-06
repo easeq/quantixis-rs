@@ -1,8 +1,8 @@
-use crate::bytecode::{Bytecode, Value}; // Assuming Bytecode and Value are defined as per your provided code
+use crate::bytecode::Bytecode; // Assuming Bytecode and Value are defined as per your provided code
 use log::debug;
 use pest::Parser;
 use pest_derive::Parser;
-use std::collections::{HashMap, HashSet};
+// use std::collections::{HashMap, HashSet};
 
 #[derive(Parser)]
 #[grammar = "bytecode.expr.pest"] // Ensure this file contains the provided grammar

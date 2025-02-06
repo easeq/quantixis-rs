@@ -1,5 +1,5 @@
 use crate::bytecode::{Bytecode, BytecodeCompiler};
-use log::debug;
+// use log::debug;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -12,7 +12,7 @@ pub enum Value {
     Map(HashMap<String, Value>),
 }
 
-type Func = fn(&[Value]) -> Result<Value, String>;
+// type Func = fn(&[Value]) -> Result<Value, String>;
 
 pub struct BytecodeExecutor {
     stack: Vec<Value>,

@@ -6,7 +6,7 @@ use quantixis_rs::ast::{Compiler, Executor, Value as ASTValue}; // Assuming the 
 
 // use meval::eval_str;
 use quantixis_macros::quantinxis_fn;
-use quantixis_rs::bytecode::{BytecodeCompiler, BytecodeExecutor, Value};
+use quantixis_rs::bytecode::{BytecodeCompiler, BytecodeExecutor, JITCompiler, Value};
 use std::collections::HashMap;
 
 #[quantinxis_fn]
@@ -152,18 +152,62 @@ fn h(x: f64, y: f64) -> Result<Value, String> {
 //     group.finish();
 // }
 //
+
+// Sample Rust functions
+fn _add(a: f64, b: f64) -> f64 {
+    a + b
+}
+
 /// Benchmark simple arithmetic expressions
 fn benchmark_simple_arithmetic(c: &mut Criterion) {
     let mut group = c.benchmark_group("Simple arithmetic Expression Evaluation");
 
     let mut executor = Executor::new();
 
-    let expr = "2 + 3";
+    let expr = "a + b";
     let compiled = Compiler::compile_expression(expr).unwrap();
     let precompiled_evalexpr = build_operator_tree::<DefaultNumericTypes>(expr).unwrap();
 
     let mut bytecode_exec = BytecodeExecutor::new();
+    bytecode_exec.bind_variable("a", Value::Number(4.0));
+    bytecode_exec.bind_variable("b", Value::Number(10.0));
     let bytecode = BytecodeCompiler::new().compile(expr).unwrap();
+
+    group.bench_function(format!("JIT Compile and Addition"), |b| {
+        b.iter(|| {
+            let mut bytecode_exec = BytecodeExecutor::new();
+            let bytecode = BytecodeCompiler::new().compile(expr).unwrap();
+            let mut jit = JITCompiler::from(
+                [],
+                [
+                    ("a".to_string(), &4.0 as *const _ as *const u8),
+                    ("b".to_string(), &10.0 as *const _ as *const u8),
+                ],
+            );
+            let jit_func = jit.compile(&bytecode).unwrap(); // Compile once
+            black_box(jit.execute(jit_func));
+        })
+    });
+
+    group.bench_function(format!("JIT Pre-Compile and Addition"), |b| {
+        let mut jit = JITCompiler::from(
+            [],
+            [
+                ("a".to_string(), &4.0 as *const _ as *const u8),
+                ("b".to_string(), &10.0 as *const _ as *const u8),
+            ],
+        );
+        let jit_func = jit.compile(&bytecode).unwrap(); // Compile once
+        b.iter(|| {
+            black_box(jit.execute(jit_func));
+        })
+    });
+
+    group.bench_function("native_rust_arithmetic", |b| {
+        let a: f64 = 4.0;
+        let _b: f64 = 10.0;
+        b.iter(|| _add(black_box(a), black_box(_b)))
+    });
 
     group.bench_function(format!("Bytecode Compile and Execute"), |b| {
         b.iter(|| {
@@ -182,10 +226,6 @@ fn benchmark_simple_arithmetic(c: &mut Criterion) {
 
     group.bench_function("precompiled_arithmetic", |b| {
         b.iter(|| executor.execute(black_box(&compiled), &black_box(Default::default())))
-    });
-
-    group.bench_function("native_rust_arithmetic", |b| {
-        b.iter(|| black_box(2.0 + 3.0 * 4.0))
     });
 
     group.bench_function("meval_arithmetic", |b| {
@@ -417,8 +457,8 @@ fn benchmark_function_calls(c: &mut Criterion) {
 criterion_group!(
     benches,
     // benchmark_expressions,
-    benchmark_function_calls,
     benchmark_simple_arithmetic,
+    benchmark_function_calls,
     benchmark_complex_arithmetic,
     // benchmark_logic_expressions,
     // benchmark_property_access,
