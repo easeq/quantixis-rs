@@ -2,11 +2,9 @@ use std::collections::HashMap;
 
 mod compiler;
 mod executor;
-// mod jit_compiler;
 
 pub use compiler::BytecodeCompiler;
 pub use executor::{BytecodeExecutor, Value};
-// pub use jit_compiler::*;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Bytecode {
