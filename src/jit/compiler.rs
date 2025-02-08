@@ -1,35 +1,21 @@
 use crate::bytecode::Bytecode;
 use crate::jit::functions::func_pow;
-use cranelift::codegen::ir::{FuncRef, GlobalValue, UserExternalNameRef};
+use crate::jit::RuntimeEnvironment;
+use cranelift::codegen::ir::FuncRef;
 use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift::prelude::*;
 use cranelift_jit::JITModule;
-use cranelift_module::{DataId, FuncId, Module};
+use cranelift_module::{FuncId, Module};
 use log::{debug, trace};
 use std::collections::HashMap;
 
 pub struct JITCompiler {
     pub(super) module: JITModule,
     pub(super) functions_map: HashMap<String, FuncId>,
-    pub(super) data_map: HashMap<String, DataId>,
     pub(super) stack: Vec<Value>,
 }
 
 impl JITCompiler {
-    pub fn link_external_vars(
-        &mut self,
-        ctx: &mut codegen::Context,
-    ) -> Result<HashMap<String, GlobalValue>, String> {
-        let mut var_refs = HashMap::new();
-
-        for (var_name, data_id) in self.data_map.iter() {
-            let var_ref = self.module.declare_data_in_func(*data_id, &mut ctx.func);
-            var_refs.insert(var_name.to_string(), var_ref);
-        }
-
-        Ok(var_refs)
-    }
-
     pub fn link_external_functions(
         &mut self,
         ctx: &mut cranelift::codegen::Context,
@@ -54,7 +40,10 @@ impl JITCompiler {
     }
 
     /// **Compiles bytecode to Cranelift IR**
-    pub fn compile(&mut self, bytecode: &[Bytecode]) -> Result<(*const u8, *mut f64), String> {
+    pub fn compile(
+        &mut self,
+        bytecode: &[Bytecode],
+    ) -> Result<(*const u8, RuntimeEnvironment), String> {
         let pow_func_id = func_pow(&mut self.module)?;
 
         let mut ctx = self.module.make_context();
@@ -62,7 +51,6 @@ impl JITCompiler {
         ctx.func.signature.returns.push(AbiParam::new(types::F64));
 
         let func_refs = self.link_external_functions(&mut ctx)?;
-        let var_refs = self.link_external_vars(&mut ctx)?;
 
         let pow_func_ref = self.module.declare_func_in_func(pow_func_id, &mut ctx.func);
 
@@ -77,7 +65,6 @@ impl JITCompiler {
         // main block
         let variables = self.compile_main_block(
             &mut builder,
-            &var_refs,
             &func_refs,
             bytecode,
             &pow_func_ref,
@@ -100,28 +87,15 @@ impl JITCompiler {
             .finalize_definitions()
             .map_err(|e| e.to_string())?;
 
-        let vars_ptr = if variables.len() > 0 {
-            self.bind_variables(&variables)
-        } else {
-            std::ptr::null_mut()
-        };
+        let vars_ptr = RuntimeEnvironment::new(&variables);
 
         let func = self.module.get_finalized_function(func_id);
-        trace!("finalized function: {func:#?}");
         Ok((func as *const u8, vars_ptr))
-    }
-
-    /// Binds a list of variables dynamically, allocating a memory buffer.
-    pub fn bind_variables(&mut self, var_names: &[String]) -> *mut f64 {
-        let num_vars = var_names.len();
-        let buffer = vec![0i64; num_vars].into_boxed_slice(); // Allocate space for variables
-        Box::into_raw(buffer) as *mut f64
     }
 
     fn compile_main_block(
         &mut self,
         builder: &mut FunctionBuilder,
-        var_refs: &HashMap<String, GlobalValue>,
         func_refs: &HashMap<String, FuncRef>,
         bytecode: &[Bytecode],
         pow_func_ref: &FuncRef,
@@ -187,10 +161,9 @@ impl JITCompiler {
                         builder.ins().fcvt_from_sint(types::F64, res_i64)
                     })?;
                 }
-                // Calculates only integer powers
-                // TODO: define a function for calculating powers
                 Bytecode::Pow => {
                     self.binary_op(builder, |builder, a, b| {
+                        debug!("pow {a:?} ^ {b:?}");
                         let result = builder.ins().call(*pow_func_ref, &[a, b]);
                         builder.inst_results(result)[0]
                     })?;
@@ -282,32 +255,6 @@ impl JITCompiler {
                     index += 1;
                     self.stack.push(var_value);
                 }
-                // Bytecode::LoadVariable(name) => {
-                //     let global_value = var_refs
-                //         .get(name)
-                //         .ok_or(format!("Undefined variable: {name}"))?;
-                //     trace!("var_refs: {var_refs:#?}");
-                //     debug!("var_ref: {global_value:#?}");
-                //
-                //     builder.create_global_value(GlobalValueData::Symbol {
-                //         name: ExternalName::User(UserExternalNameRef::new(0)),
-                //         offset: Imm64::new(0),
-                //         tls: false,
-                //         colocated: false,
-                //     });
-                //     // GlobalValueData
-                //     let global_value_address =
-                //         builder.ins().global_value(types::I64, *global_value);
-                //     let res =
-                //         builder
-                //             .ins()
-                //             .load(types::F64, MemFlags::new(), global_value_address, 0);
-                //     self.stack.push(res);
-                // }
-                // Bytecode::StoreVariable(name) => {
-                //     let value = self.stack.pop().ok_or("Stack underflow")?;
-                //     variables.insert(name.clone(), value);
-                // }
                 // Bytecode::GetProperty(prop) => {
                 //     let value = self.pop_value()?;
                 //
@@ -324,46 +271,12 @@ impl JITCompiler {
                 //     self.push_value(result?);
                 //     // }
                 // }
-                // Bytecode::Jump(target) => {
-                //     let target_block = *block_map.get(target).unwrap();
-                //     builder.ins().jump(target_block, &[]);
-                // }
-                // Bytecode::JumpIfTrue(target) => {
-                //     let target_block = *block_map.get(target).unwrap();
-                //     let cond = self.pop_value();
-                //     builder.ins().brnz(cond, target_block, &[]);
-                // }
-                // Bytecode::JumpIfFalse(target) => {
-                //     let target_block = *block_map.get(target).unwrap();
-                //     let cond = self.pop_bool();
-                //     builder.ins().brz(cond, target_block, &[]);
-                // }
-                // Bytecode::Return => {
-                //     if let Some(value) = self.stack.pop() {
-                //         builder.ins().return_(&[value]);
-                //     } else {
-                //         return Err("Return with empty stack".into());
-                //     }
-                // }
                 Bytecode::NoOp => {}
                 _ => return Err("invalid bytecode".to_string()),
             }
         }
 
         Ok(variables)
-    }
-
-    /// **Executes compiled JIT function**
-    pub fn execute(&mut self, func_id: *const u8, memory_ptr: *mut f64) -> Result<f64, String> {
-        debug!("memory_ptr: {:?}", memory_ptr.is_null());
-
-        if !memory_ptr.is_null() {
-            let func: extern "C" fn(*mut f64) -> f64 = unsafe { std::mem::transmute(func_id) };
-            Ok(func(memory_ptr))
-        } else {
-            let func: extern "C" fn() -> f64 = unsafe { std::mem::transmute(func_id) };
-            Ok(func())
-        }
     }
 
     /// Extracts a value from the stack

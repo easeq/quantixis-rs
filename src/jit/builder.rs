@@ -98,13 +98,13 @@ impl JITCompilerBuilder {
 
         let mut module = JITModule::new(builder);
         let functions_map = self.build_funcs(&mut module)?;
-        let data_map = self.build_data(&mut module)?;
+        let _data_map = self.build_data(&mut module)?;
 
         Ok(JITCompiler {
             module,
             stack: Vec::new(),
             functions_map,
-            data_map,
+            // data_map,
         })
     }
 }
