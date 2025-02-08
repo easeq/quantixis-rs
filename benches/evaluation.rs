@@ -8,7 +8,7 @@ use quantixis_rs::ast::{Compiler, Executor, Value as ASTValue}; // Assuming the 
 // use meval::eval_str;
 use quantixis_macros::quantinxis_fn;
 use quantixis_rs::bytecode::{BytecodeCompiler, BytecodeExecutor, Value};
-use quantixis_rs::jit::{execute, JITCompiler, JITCompilerBuilder};
+use quantixis_rs::jit::{execute, ArrayMeta, JITCompiler, JITCompilerBuilder};
 use std::collections::HashMap;
 
 #[quantinxis_fn]
@@ -64,8 +64,33 @@ fn _square(a: f64) -> f64 {
     a * a
 }
 
-fn _sum_array(a: Vec<f64>) -> f64 {
-    a.into_iter().reduce(|acc, e| acc + e).unwrap()
+fn _sum_array(a: i64) -> f64 {
+    let mut sum: f64 = 0.0;
+    // Convert the stored i64 back into a pointer to ArrayMeta.
+    let meta_ptr = a as *mut ArrayMeta;
+    if meta_ptr.is_null() {
+        println!("Array meta pointer is null");
+    } else {
+        // Safety: We assume the pointer is valid and was allocated via set_array_i32.
+        let meta = unsafe { &*meta_ptr };
+        // Recover the original array pointer by casting meta.ptr to a pointer of the correct type.
+        let array_ptr = meta.ptr as *const i32;
+        // Construct a slice from the raw pointer and the length stored in meta.
+        let arr_slice = unsafe { std::slice::from_raw_parts(array_ptr, meta.len) };
+        println!("Reconstructed array: {:?}", arr_slice);
+        // println!("v: {:?}", v);
+        sum = sum_array(arr_slice);
+    }
+
+    sum as f64
+}
+
+fn sum_array(arr_slice: &[i32]) -> f64 {
+    arr_slice
+        .to_vec()
+        .into_iter()
+        .reduce(|acc, e| acc + e)
+        .unwrap() as f64
 }
 
 fn jit_compiler() -> JITCompiler {
@@ -91,7 +116,7 @@ fn jit_compiler() -> JITCompiler {
         .add_function(
             "sum_array".to_string(),
             _square as *const u8,
-            vec![AbiParam::new(types::F64)],
+            vec![AbiParam::new(types::I64)],
             vec![AbiParam::new(types::F64)],
         );
 
@@ -100,8 +125,9 @@ fn jit_compiler() -> JITCompiler {
 
 fn benchmark_expressions(c: &mut Criterion) {
     let expressions = vec![
-        ("add(a, b)", "First Function"),
-        ("add(a, b) > multiply(a, b)", "Function results comparison"),
+        // ("add(a, b)", "First Function"),
+        // ("add(a, b) > multiply(a, b)", "Function results comparison"),
+        ("sum_array(a)", "Function that accepts array"),
         // ("1 + 2", "Simple Arithmetic"),
         // ("(3 + 5) * 2", "Grouped Arithmetic"),
         // ("(1 + 2) > (3 - 4)", "Simple Logic"),
@@ -127,6 +153,7 @@ fn benchmark_expressions(c: &mut Criterion) {
     let mut group = c.benchmark_group("Expression Execution");
 
     for (expr, label) in expressions {
+        let _v: Box<[i32]> = vec![1, 2, 3, 4, 5].into_boxed_slice();
         let _a: f64 = rand::random_range(0.0..20.0);
         let _b: f64 = rand::random_range(0.0..20.0);
         group.bench_function(format!("JIT Compile and Execute - {label}"), |b| {
@@ -135,7 +162,8 @@ fn benchmark_expressions(c: &mut Criterion) {
             b.iter(|| {
                 let mut jit_compiler = jit_compiler();
                 let (func_id, mut env) = jit_compiler.compile(&bytecode).unwrap();
-                env.set_f64("a", _a);
+                env.set_array_i32("a", _v.clone());
+                // env.set_f64("a", _a);
                 env.set_f64("b", _b);
                 env.init();
                 black_box(execute(func_id, env.as_ptr()).unwrap());
@@ -147,14 +175,16 @@ fn benchmark_expressions(c: &mut Criterion) {
             let mut jit_compiler = jit_compiler();
             let (func_id, mut env) = jit_compiler.compile(&bytecode).unwrap();
 
-            env.set_f64("a", _a);
+            env.set_array_i32("a", _v.clone());
+            // env.set_f64("a", _a);
             env.set_f64("b", _b);
             env.init();
             b.iter(|| black_box(execute(func_id, env.as_ptr()).unwrap()))
         });
 
         group.bench_function(format!("Native Rust - {label}"), |b| {
-            b.iter(|| _add(black_box(_a), black_box(_b)))
+            // b.iter(|| _add(black_box(_a), black_box(_b)))
+            b.iter(|| sum_array(black_box(&_v)))
         });
 
         // group.bench_function(format!("meval - {label}"), |b| {

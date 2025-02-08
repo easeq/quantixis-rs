@@ -161,6 +161,7 @@ impl JITCompiler {
                         builder.ins().fcvt_from_sint(types::F64, res_i64)
                     })?;
                 }
+                // TODO: remove this and define/use a rust native function through Bytecode::Call
                 Bytecode::Pow => {
                     self.binary_op(builder, |builder, a, b| {
                         debug!("pow {a:?} ^ {b:?}");
@@ -250,10 +251,12 @@ impl JITCompiler {
                     let var_value =
                         builder
                             .ins()
-                            .load(types::F64, MemFlags::new(), memory_ptr, offset);
+                            .load(types::I64, MemFlags::new(), memory_ptr, offset);
+
+                    let res = builder.ins().fcvt_from_sint(types::F64, var_value);
 
                     index += 1;
-                    self.stack.push(var_value);
+                    self.stack.push(res);
                 }
                 // Bytecode::GetProperty(prop) => {
                 //     let value = self.pop_value()?;
